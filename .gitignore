@@ -7,3 +7,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Node / tooling
+node_modules/
+package-lock.json

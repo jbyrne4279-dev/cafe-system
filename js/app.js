@@ -227,7 +227,6 @@ function renderDiary() {
       </div>
       <div class="diary-sign">
         <input data-role="diary" data-day="${d.key}" data-field="name" placeholder="Name" value="${esc(e.name)}" />
-        <input data-role="diary" data-day="${d.key}" data-field="signed" placeholder="Signed" value="${esc(e.signed)}" />
       </div>
       <p class="diary-foot">Our safe methods were followed and effectively supervised today.</p>
     </div>`;
@@ -289,7 +288,7 @@ function renderSummary() {
 
   DAYS.forEach((d) => {
     const e = w.diary[d.key];
-    if (e.name && e.signed) { diarySigned++; perDay[d.key].signed = true; }
+    if (e.name) { diarySigned++; perDay[d.key].signed = true; }
   });
 
   document.getElementById('summaryStats').innerHTML = `

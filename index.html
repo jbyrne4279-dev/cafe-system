@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f766e" />
+  <title>Café Daily Records</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-header__inner">
+      <div class="brand">
+        <span class="brand__logo">☕</span>
+        <div>
+          <h1 class="brand__name" id="cafeName">Café Daily Records</h1>
+          <p class="brand__tag">Food safety &amp; cleaning log</p>
+        </div>
+      </div>
+      <div class="date-picker">
+        <label for="recordDate">Date</label>
+        <input type="date" id="recordDate" />
+      </div>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button class="tab is-active" data-tab="fridge">Fridge &amp; Freezer</button>
+      <button class="tab" data-tab="hotfood">Hot Food</button>
+      <button class="tab" data-tab="cleaning">Cleaning</button>
+      <button class="tab" data-tab="summary">Daily Summary</button>
+    </nav>
+  </header>
+
+  <main class="app-main">
+    <!-- FRIDGE & FREEZER -->
+    <section class="panel is-active" id="panel-fridge">
+      <div class="panel__head">
+        <h2>Fridge &amp; Freezer Temperatures</h2>
+        <p class="panel__hint">Fridges should read <strong>0–5&deg;C</strong>, freezers <strong>-18&deg;C or below</strong>.</p>
+      </div>
+      <form class="record-form" id="fridgeForm" autocomplete="off">
+        <div class="field">
+          <label>Unit</label>
+          <input type="text" name="unit" placeholder="e.g. Under-counter fridge" required />
+        </div>
+        <div class="field">
+          <label>Type</label>
+          <select name="type">
+            <option value="fridge">Fridge</option>
+            <option value="freezer">Freezer</option>
+          </select>
+        </div>
+        <div class="field field--sm">
+          <label>Temp (&deg;C)</label>
+          <input type="number" name="temp" step="0.1" placeholder="4.0" required />
+        </div>
+        <div class="field field--sm">
+          <label>Time</label>
+          <input type="time" name="time" required />
+        </div>
+        <div class="field field--sm">
+          <label>Initials</label>
+          <input type="text" name="by" maxlength="4" placeholder="AB" />
+        </div>
+        <button type="submit" class="btn btn--add">Add reading</button>
+      </form>
+      <div class="table-wrap">
+        <table class="records-table" id="fridgeTable">
+          <thead>
+            <tr><th>Unit</th><th>Type</th><th>Temp</th><th>Time</th><th>By</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty" id="fridgeEmpty">No readings logged yet for this day.</p>
+      </div>
+    </section>
+
+    <!-- HOT FOOD -->
+    <section class="panel" id="panel-hotfood">
+      <div class="panel__head">
+        <h2>Hot Food Temperatures</h2>
+        <p class="panel__hint">Hot holding must be <strong>63&deg;C or above</strong>. Cooking/reheating core temp <strong>75&deg;C+</strong>.</p>
+      </div>
+      <form class="record-form" id="hotfoodForm" autocomplete="off">
+        <div class="field">
+          <label>Food item</label>
+          <input type="text" name="item" placeholder="e.g. Soup of the day" required />
+        </div>
+        <div class="field">
+          <label>Stage</label>
+          <select name="stage">
+            <option value="cooking">Cooking</option>
+            <option value="reheating">Reheating</option>
+            <option value="hot-holding">Hot holding</option>
+          </select>
+        </div>
+        <div class="field field--sm">
+          <label>Temp (&deg;C)</label>
+          <input type="number" name="temp" step="0.1" placeholder="75" required />
+        </div>
+        <div class="field field--sm">
+          <label>Time</label>
+          <input type="time" name="time" required />
+        </div>
+        <div class="field field--sm">
+          <label>Initials</label>
+          <input type="text" name="by" maxlength="4" placeholder="AB" />
+        </div>
+        <button type="submit" class="btn btn--add">Add reading</button>
+      </form>
+      <div class="table-wrap">
+        <table class="records-table" id="hotfoodTable">
+          <thead>
+            <tr><th>Item</th><th>Stage</th><th>Temp</th><th>Time</th><th>By</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty" id="hotfoodEmpty">No readings logged yet for this day.</p>
+      </div>
+    </section>
+
+    <!-- CLEANING -->
+    <section class="panel" id="panel-cleaning">
+      <div class="panel__head">
+        <h2>Cleaning Tasks</h2>
+        <p class="panel__hint">Tick off each task as it is completed. Add your initials.</p>
+      </div>
+      <form class="record-form record-form--inline" id="cleaningForm" autocomplete="off">
+        <div class="field">
+          <label>Add a task</label>
+          <input type="text" name="task" placeholder="e.g. Clean coffee machine" required />
+        </div>
+        <button type="submit" class="btn btn--add">Add task</button>
+      </form>
+      <ul class="checklist" id="cleaningList"></ul>
+      <p class="empty" id="cleaningEmpty">No cleaning tasks for this day yet.</p>
+    </section>
+
+    <!-- DAILY SUMMARY -->
+    <section class="panel" id="panel-summary">
+      <div class="panel__head">
+        <h2>Daily Summary</h2>
+        <p class="panel__hint">A quick overview of the day. Add notes and sign off.</p>
+      </div>
+      <div class="summary-grid" id="summaryStats"></div>
+      <div class="summary-notes">
+        <label for="summaryNotes">Notes / issues / corrective actions</label>
+        <textarea id="summaryNotes" rows="4" placeholder="e.g. Freezer 2 running warm, engineer called."></textarea>
+        <div class="signoff">
+          <div class="field">
+            <label>Signed off by</label>
+            <input type="text" id="summaryBy" placeholder="Manager name" />
+          </div>
+          <button class="btn btn--save" id="saveSummary">Save summary</button>
+        </div>
+        <p class="save-note" id="summarySaved"></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <button class="btn btn--ghost" id="exportBtn">Export day (JSON)</button>
+    <button class="btn btn--ghost" id="printBtn">Print / PDF</button>
+    <span class="footer-note">Records are saved to this device's browser.</span>
+  </footer>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

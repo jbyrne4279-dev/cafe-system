@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Café Records">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#17b3a3"/>
+      <stop offset="1" stop-color="#0c7d72"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- steam -->
+  <g fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" opacity="0.9">
+    <path d="M214 168 q-18 -20 0 -40 q18 -20 0 -40"/>
+    <path d="M256 172 q-18 -20 0 -40 q18 -20 0 -40"/>
+    <path d="M298 168 q-18 -20 0 -40 q18 -20 0 -40"/>
+  </g>
+
+  <!-- saucer -->
+  <ellipse cx="256" cy="386" rx="150" ry="26" fill="#ffffff" opacity="0.95"/>
+
+  <!-- handle -->
+  <path d="M344 250 C408 250 408 330 344 322" fill="none" stroke="#ffffff" stroke-width="26" stroke-linecap="round"/>
+
+  <!-- cup -->
+  <path d="M160 232 q0 -12 12 -12 H340 q12 0 12 12 V300 q0 56 -52 60 H212 q-52 -4 -52 -60 Z" fill="#ffffff"/>
+
+  <!-- coffee surface -->
+  <ellipse cx="256" cy="234" rx="86" ry="15" fill="#6f4e37"/>
+</svg>

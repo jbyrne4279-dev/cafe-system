@@ -20,10 +20,27 @@ café's current forms and can be edited in the app or in `js/app.js`.
 
 ## How it works
 
-This is the **base version**: a static website (HTML/CSS/JavaScript) with no
-server. Each week's records are saved in the browser on the device you use it on
-(via `localStorage`), so it works straight away with nothing to install. You can
-export any week as JSON or print it (Print / PDF) for the paper file.
+A day-at-a-time record book for several café locations (North Herts Museum Café,
+Howard Park, Bancroft — pick one from the dropdown at the top). Each location
+keeps its own records.
+
+Records are stored **in the cloud** via a tiny built-in API (`server.js`) so
+every phone/tablet shares the same data. The app also caches each day in the
+browser, so it keeps working with no signal and syncs automatically when back
+online (see the "Saved to cloud ✓" line at the bottom). Owners can **print any
+day** or **download a whole month's report** (a printable HTML file) for the
+legal log book.
+
+### Data storage & backup (Railway Volume)
+
+Records live in a JSON file at `DATA_DIR/records.json`. On Railway, attach a
+**Volume** so the data survives redeploys:
+
+1. Railway → your **cafe-system** service → **Variables** → add `DATA_DIR` = `/data`
+2. Railway → the service → **Volumes** → **New Volume**, mount path `/data`
+3. Redeploy.
+
+Locally it defaults to `./data/` (git-ignored).
 
 ## Running it
 

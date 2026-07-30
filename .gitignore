@@ -11,3 +11,6 @@ Thumbs.db
 # Node / tooling
 node_modules/
 package-lock.json
+
+# Local record data (served from a Railway Volume in production)
+data/

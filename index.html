@@ -21,8 +21,12 @@
     <div class="app-header__inner">
       <div class="brand">
         <span class="brand__logo">☕</span>
-        <div>
-          <h1 class="brand__name">North Herts Museum Café</h1>
+        <div class="brand__text">
+          <div class="loc-wrap">
+            <span class="loc-current" id="locCurrent"></span>
+            <span class="loc-chevron">▾</span>
+            <select class="loc-select" id="locationSelect" aria-label="Café location"></select>
+          </div>
           <p class="brand__tag">Daily record book</p>
         </div>
       </div>
@@ -98,6 +102,11 @@
 
   <footer class="app-footer">
     <button class="btn btn--print" id="printBtn">🖨️ Print this day</button>
+    <div class="report-row">
+      <input type="month" id="reportMonth" aria-label="Report month" />
+      <button class="btn btn--ghost" id="downloadMonth">Download monthly report</button>
+    </div>
+    <p class="sync-note" id="syncNote"></p>
   </footer>
 
   <nav class="tabbar" id="tabs">

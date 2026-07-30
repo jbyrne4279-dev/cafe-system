@@ -1,16 +1,22 @@
-/* North Herts Museum Café — Daily Records (day-at-a-time log book)
+/* North Herts Museum Café group — Daily Records (day-at-a-time log book)
  *
- * One day on screen at a time, kept simple for staff. Owners can flip to any
- * date and print that day's full record for the legal log book.
- *
- * Sections: Fridge & Freezer temps, Cleaning, Hot Food, Daily Diary.
- * The unit list and cleaning tasks are FIXED (from the café's sheets).
- * Records are stored per DAY in the browser (localStorage).
+ * - Multiple café locations, each with its own records.
+ * - One day on screen at a time; owners can flip to any date and print it,
+ *   or download a whole month's report.
+ * - Records sync to the server (shared across devices) and also cache in the
+ *   browser so the app keeps working offline, then syncs when back online.
  */
 
-const STORE_KEY = 'nhmc-cafe-records-v4';
+const STORE_KEY = 'nhmc-cafe-records-v5';   // { location: { date: day } }
+const LOC_KEY = 'nhmc-cafe-location';
+const PENDING_KEY = 'nhmc-cafe-pending';    // ["location|date", ...]
 
-// Fixed units from the café's temperature chart. Type drives colour only.
+const LOCATIONS = [
+  { id: 'museum', name: 'North Herts Museum Café' },
+  { id: 'howard-park', name: 'Howard Park' },
+  { id: 'bancroft', name: 'Bancroft' },
+];
+
 const UNITS = [
   { id: 'double-fridge', name: 'Double Fridge', type: 'fridge' },
   { id: 'double-freezer', name: 'Double Freezer', type: 'freezer' },
@@ -21,7 +27,6 @@ const UNITS = [
   { id: 'ice-cream-freezer', name: 'Ice cream Freezer', type: 'freezer' },
 ];
 
-// Fixed cleaning tasks from the café's cleaning sheet.
 const TASKS = [
   { id: 'walls-doors-canopy', name: 'Walls, Doors and Canopy' },
   { id: 'equipment-surfaces', name: 'Equipment and Surfaces' },
@@ -36,11 +41,7 @@ const TASKS = [
   { id: 'labels-check', name: 'Labels check café and kitchen' },
 ];
 
-const HOT_RULES = {
-  cooking: (t) => t >= 75,
-  reheating: (t) => t >= 75,
-  'hot-holding': (t) => t >= 63,
-};
+const HOT_RULES = { cooking: (t) => t >= 75, reheating: (t) => t >= 75, 'hot-holding': (t) => t >= 63 };
 const STAGE_LABEL = { cooking: 'Cooking', reheating: 'Reheating', 'hot-holding': 'Hot holding' };
 
 /* ---------- helpers ---------- */
@@ -48,46 +49,104 @@ const STAGE_LABEL = { cooking: 'Cooking', reheating: 'Reheating', 'hot-holding':
 function toISO(d) { return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
 function todayISO() { return toISO(new Date()); }
 function addDays(iso, n) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return toISO(d); }
-function nowTime() { return new Date().toTimeString().slice(0, 5); }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-
-function longDate(iso) {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-}
-function weekday(iso) {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long' });
-}
+function longDate(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
+function weekday(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long' }); }
+function locName(id) { return (LOCATIONS.find((l) => l.id === id) || {}).name || id; }
 
 /* ---------- storage ---------- */
 
-function loadAll() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; } }
-function saveAll(d) { localStorage.setItem(STORE_KEY, JSON.stringify(d)); }
+let STORE = {};
+function loadLocal() { try { STORE = JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { STORE = {}; } }
+function saveLocal() { localStorage.setItem(STORE_KEY, JSON.stringify(STORE)); }
 
 function blankDay() {
   const temps = {}; UNITS.forEach((u) => { temps[u.id] = { am: '', pm: '' }; });
-  const cleaning = {}; TASKS.forEach((t) => { cleaning[t.id] = { done: false, by: '' }; });
+  const cleaning = {}; TASKS.forEach((t) => { cleaning[t.id] = { done: false }; });
   return { temps, tempsBy: '', cleaning, hotfood: [], diary: { notes: '', opening: false, closing: false, name: '' } };
 }
 
 function getDay(iso) {
-  const all = loadAll();
-  if (!all[iso]) { all[iso] = blankDay(); saveAll(all); }
-  const d = all[iso];
+  if (!STORE[currentLocation]) STORE[currentLocation] = {};
+  const loc = STORE[currentLocation];
+  if (!loc[iso]) loc[iso] = blankDay();
+  const d = loc[iso];
   d.temps = d.temps || {}; UNITS.forEach((u) => { if (!d.temps[u.id]) d.temps[u.id] = { am: '', pm: '' }; });
-  d.cleaning = d.cleaning || {}; TASKS.forEach((t) => { if (!d.cleaning[t.id]) d.cleaning[t.id] = { done: false, by: '' }; });
+  d.cleaning = d.cleaning || {}; TASKS.forEach((t) => { if (!d.cleaning[t.id]) d.cleaning[t.id] = { done: false }; });
   if (typeof d.tempsBy !== 'string') d.tempsBy = '';
   d.hotfood = d.hotfood || [];
   d.diary = d.diary || { notes: '', opening: false, closing: false, name: '' };
   return d;
 }
-function setDay(iso, day) { const all = loadAll(); all[iso] = day; saveAll(all); }
 
 /* ---------- state ---------- */
 
+let currentLocation = localStorage.getItem(LOC_KEY) || LOCATIONS[0].id;
+if (!LOCATIONS.some((l) => l.id === currentLocation)) currentLocation = LOCATIONS[0].id;
 let currentDate = todayISO();
+
 function day() { return getDay(currentDate); }
-function commit(d) { setDay(currentDate, d); updateTabDots(); }
+function commit(d) {
+  STORE[currentLocation][currentDate] = d;
+  saveLocal();
+  updateTabDots();
+  queuePush(currentLocation, currentDate);
+}
+
+/* ---------- server sync ---------- */
+
+function setSync(state) {
+  const el = document.getElementById('syncNote');
+  if (!el) return;
+  const msg = { syncing: 'Saving…', ok: 'Saved to cloud ✓', local: 'Saved on this device (will sync when online)' };
+  el.textContent = msg[state] || '';
+  el.className = 'sync-note sync-note--' + state;
+}
+
+function getPending() { try { return JSON.parse(localStorage.getItem(PENDING_KEY)) || []; } catch { return []; } }
+function setPending(list) { localStorage.setItem(PENDING_KEY, JSON.stringify([...new Set(list)])); }
+function addPending(key) { setPending([...getPending(), key]); }
+function removePending(key) { setPending(getPending().filter((k) => k !== key)); }
+
+const pushTimers = {};
+function queuePush(loc, date) {
+  const key = loc + '|' + date;
+  clearTimeout(pushTimers[key]);
+  pushTimers[key] = setTimeout(() => pushDay(loc, date), 600);
+}
+async function pushDay(loc, date) {
+  const key = loc + '|' + date;
+  setSync('syncing');
+  try {
+    const res = await fetch(`/api/day/${loc}/${date}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify((STORE[loc] || {})[date] || {}),
+    });
+    if (!res.ok) throw new Error('bad status');
+    removePending(key);
+    setSync('ok');
+  } catch {
+    addPending(key);
+    setSync('local');
+  }
+}
+function flushPending() { getPending().forEach((k) => { const [loc, date] = k.split('|'); pushDay(loc, date); }); }
+
+async function syncLocationFromServer(loc) {
+  setSync('syncing');
+  try {
+    const res = await fetch(`/api/data/${loc}`);
+    if (!res.ok) throw new Error('bad status');
+    const server = await res.json();
+    STORE[loc] = { ...(STORE[loc] || {}), ...server }; // server wins for existing days
+    saveLocal();
+    if (loc === currentLocation) renderAll();
+    setSync('ok');
+  } catch {
+    setSync('local');
+  }
+}
 
 /* ---------- temperature evaluation ---------- */
 
@@ -101,6 +160,12 @@ function typeLabel(type) { return type === 'freezer' ? 'Freezer' : 'Fridge'; }
 function typeTarget(type) { return type === 'freezer' ? '≤ -18°C' : '0–5°C'; }
 
 /* ---------- renderers ---------- */
+
+function renderLocations() {
+  const sel = document.getElementById('locationSelect');
+  sel.innerHTML = LOCATIONS.map((l) => `<option value="${l.id}" ${l.id === currentLocation ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
+  document.getElementById('locCurrent').textContent = locName(currentLocation);
+}
 
 function renderDayLabel() {
   document.getElementById('recordDate').value = currentDate;
@@ -131,19 +196,17 @@ function renderTemps() {
 function renderCleaning() {
   const d = day();
   document.getElementById('cleaningList').innerHTML = TASKS.map((t) => {
-    const c = d.cleaning[t.id];
-    return `<div class="crow ${c.done ? 'done' : ''}" data-role="clean-row" data-task="${t.id}">
-      <span class="crow__box">${c.done ? '✓' : ''}</span>
+    const done = d.cleaning[t.id].done;
+    return `<div class="crow ${done ? 'done' : ''}" data-role="clean-row" data-task="${t.id}">
+      <span class="crow__box">${done ? '✓' : ''}</span>
       <span class="crow__name">${esc(t.name)}</span>
-      <input class="crow__init" data-role="clean-init" data-task="${t.id}" value="${esc(c.by)}" maxlength="4" placeholder="Init." />
     </div>`;
   }).join('');
 }
 
 function renderHotfood() {
   const d = day();
-  const empty = document.getElementById('hotfoodEmpty');
-  empty.style.display = d.hotfood.length ? 'none' : 'block';
+  document.getElementById('hotfoodEmpty').style.display = d.hotfood.length ? 'none' : 'block';
   document.getElementById('hotfoodList').innerHTML = d.hotfood.map((r) => {
     const ok = HOT_RULES[r.stage] ? HOT_RULES[r.stage](Number(r.temp)) : true;
     return `<div class="hf-item">
@@ -173,18 +236,15 @@ function renderDiary() {
   </div>`;
 }
 
-// Green dots on tabs that still have nothing filled in for the day.
 function sectionDone(d, key) {
   if (key === 'temps') return Object.values(d.temps).some((r) => r.am !== '' || r.pm !== '') || d.tempsBy !== '';
   if (key === 'cleaning') return Object.values(d.cleaning).some((c) => c.done);
   if (key === 'diary') return !!(d.diary.notes || d.diary.name || d.diary.opening || d.diary.closing);
-  return true; // hot food is optional — never nags
+  return true;
 }
 function updateTabDots() {
   const d = day();
-  document.querySelectorAll('.tab').forEach((tab) => {
-    tab.classList.toggle('has-todo', !sectionDone(d, tab.dataset.tab));
-  });
+  document.querySelectorAll('.tab').forEach((tab) => tab.classList.toggle('has-todo', !sectionDone(d, tab.dataset.tab)));
 }
 
 function renderAll() {
@@ -196,7 +256,112 @@ function renderAll() {
   updateTabDots();
 }
 
+/* ---------- monthly report ---------- */
+
+function dayHasData(d) {
+  if (!d) return false;
+  if (Object.values(d.temps || {}).some((r) => r.am !== '' || r.pm !== '')) return true;
+  if (d.tempsBy) return true;
+  if (Object.values(d.cleaning || {}).some((c) => c.done)) return true;
+  if ((d.hotfood || []).length) return true;
+  const di = d.diary || {};
+  return !!(di.notes || di.name || di.opening || di.closing);
+}
+
+function reportDayBlock(iso, d) {
+  const tempRows = UNITS.map((u) => {
+    const r = d.temps[u.id] || { am: '', pm: '' };
+    const flag = (v) => (evalTemp(u.type, v) === 'alert' ? ' ⚠' : '');
+    return `<tr><td>${esc(u.name)}</td><td>${esc(r.am)}${r.am !== '' ? '°C' : ''}${flag(r.am)}</td><td>${esc(r.pm)}${r.pm !== '' ? '°C' : ''}${flag(r.pm)}</td></tr>`;
+  }).join('');
+
+  const cleanRows = TASKS.map((t) => `<li>${d.cleaning[t.id] && d.cleaning[t.id].done ? '☑' : '☐'} ${esc(t.name)}</li>`).join('');
+
+  const hot = (d.hotfood || []).length
+    ? '<ul>' + d.hotfood.map((r) => `<li>${esc(r.item)} — ${esc(STAGE_LABEL[r.stage] || r.stage)} ${esc(r.temp)}°C${r.by ? ' (' + esc(r.by) + ')' : ''}</li>`).join('') + '</ul>'
+    : '<p class="muted">None recorded.</p>';
+
+  const di = d.diary || {};
+  const diary = `<p><strong>Notes:</strong> ${esc(di.notes) || '<span class="muted">—</span>'}</p>
+    <p><strong>Opening checks:</strong> ${di.opening ? '✓' : '—'} &nbsp; <strong>Closing checks:</strong> ${di.closing ? '✓' : '—'} &nbsp; <strong>Signed:</strong> ${esc(di.name) || '—'}</p>`;
+
+  return `<section class="rday">
+    <h2>${esc(longDate(iso))}</h2>
+    <h3>Fridge &amp; Freezer${d.tempsBy ? ' <span class="muted">— checked by ' + esc(d.tempsBy) + '</span>' : ''}</h3>
+    <table><thead><tr><th>Unit</th><th>AM</th><th>PM</th></tr></thead><tbody>${tempRows}</tbody></table>
+    <h3>Cleaning</h3><ul class="clist">${cleanRows}</ul>
+    <h3>Hot Food</h3>${hot}
+    <h3>Daily Diary</h3>${diary}
+  </section>`;
+}
+
+function buildMonthlyReport(loc, ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const monthName = new Date(y, m - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  let blocks = '', open = 0;
+  for (let i = 1; i <= daysInMonth; i++) {
+    const iso = `${ym}-${String(i).padStart(2, '0')}`;
+    const d = (STORE[loc] || {})[iso];
+    if (!dayHasData(d)) continue;
+    open++;
+    blocks += reportDayBlock(iso, d);
+  }
+  if (!open) blocks = '<p class="muted">No records were found for this month.</p>';
+
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(locName(loc))} — ${esc(monthName)} report</title>
+<style>
+  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111;margin:24px;line-height:1.4}
+  header{border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:16px}
+  header h1{margin:0;font-size:22px}
+  header p{margin:2px 0 0;color:#555}
+  .summary{color:#555;margin:0 0 18px}
+  .rday{page-break-inside:avoid;border:1px solid #ccc;border-radius:8px;padding:12px 16px;margin-bottom:14px}
+  .rday h2{font-size:16px;margin:0 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px}
+  .rday h3{font-size:13px;margin:12px 0 4px;color:#333}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{border:1px solid #ddd;padding:4px 8px;text-align:left}
+  th{background:#f4f4f4}
+  ul{margin:4px 0;padding-left:18px;font-size:13px}
+  .clist{list-style:none;padding-left:0;columns:2}
+  .muted{color:#999}
+  @media print{body{margin:10mm}.rday{border-color:#999}}
+</style></head><body>
+<header>
+  <h1>${esc(locName(loc))}</h1>
+  <p>Daily records — ${esc(monthName)}</p>
+</header>
+<p class="summary">${open} day${open === 1 ? '' : 's'} with records. Print this page (Ctrl/Cmd + P) to save as PDF for the log book.</p>
+${blocks}
+</body></html>`;
+}
+
+function downloadMonthlyReport() {
+  const ym = document.getElementById('reportMonth').value;
+  if (!ym) { alert('Please choose a month first.'); return; }
+  const html = buildMonthlyReport(currentLocation, ym);
+  const blob = new Blob([html], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${currentLocation}-report-${ym}.html`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 /* ---------- events ---------- */
+
+function initLocation() {
+  const sel = document.getElementById('locationSelect');
+  sel.addEventListener('change', () => {
+    currentLocation = sel.value;
+    localStorage.setItem(LOC_KEY, currentLocation);
+    document.getElementById('locCurrent').textContent = locName(currentLocation);
+    renderAll();
+    syncLocationFromServer(currentLocation);
+  });
+}
 
 function initTabs() {
   document.getElementById('tabs').addEventListener('click', (e) => {
@@ -217,8 +382,7 @@ function initDayNav() {
 }
 
 function initTemps() {
-  const list = document.getElementById('tempList');
-  list.addEventListener('input', (e) => {
+  document.getElementById('tempList').addEventListener('input', (e) => {
     const el = e.target;
     if (el.dataset.role !== 'temp') return;
     const u = UNITS.find((x) => x.id === el.dataset.unit);
@@ -236,10 +400,8 @@ function initTemps() {
 }
 
 function initCleaning() {
-  const list = document.getElementById('cleaningList');
-  // Tap a row to tick; tap again to untick. (Typing initials doesn't toggle.)
-  list.addEventListener('click', (e) => {
-    if (e.target.closest('.crow__init')) return;
+  // Tap a row to tick; tap again to untick.
+  document.getElementById('cleaningList').addEventListener('click', (e) => {
     const row = e.target.closest('.crow');
     if (!row) return;
     const d = day();
@@ -248,13 +410,6 @@ function initCleaning() {
     commit(d);
     row.classList.toggle('done', c.done);
     row.querySelector('.crow__box').textContent = c.done ? '✓' : '';
-  });
-  list.addEventListener('input', (e) => {
-    if (e.target.dataset.role !== 'clean-init') return;
-    const d = day();
-    d.cleaning[e.target.dataset.task].by = e.target.value.toUpperCase();
-    e.target.value = d.cleaning[e.target.dataset.task].by;
-    commit(d);
   });
 }
 
@@ -280,32 +435,37 @@ function initHotfood() {
 
 function initDiary() {
   const card = document.getElementById('diaryCard');
-  const write = (el) => {
-    const d = day();
-    d.diary[el.dataset.field] = el.type === 'checkbox' ? el.checked : el.value;
-    commit(d);
-  };
+  const write = (el) => { const d = day(); d.diary[el.dataset.field] = el.type === 'checkbox' ? el.checked : el.value; commit(d); };
   card.addEventListener('input', (e) => { if (e.target.dataset.role === 'diary') write(e.target); });
   card.addEventListener('change', (e) => { if (e.target.dataset.role === 'diary' && e.target.type === 'checkbox') write(e.target); });
 }
 
-function initPrint() {
+function initFooter() {
   document.getElementById('printBtn').addEventListener('click', () => {
     document.getElementById('printHeader').innerHTML =
-      `<h1>North Herts Museum Café — Daily Record</h1><p>${esc(longDate(currentDate))}</p>`;
+      `<h1>${esc(locName(currentLocation))} — Daily Record</h1><p>${esc(longDate(currentDate))}</p>`;
     window.print();
   });
+  document.getElementById('reportMonth').value = todayISO().slice(0, 7);
+  document.getElementById('downloadMonth').addEventListener('click', downloadMonthlyReport);
 }
 
 /* ---------- boot ---------- */
 
 document.addEventListener('DOMContentLoaded', () => {
-  initDayNav();
+  loadLocal();
+  renderLocations();
+  initLocation();
   initTabs();
+  initDayNav();
   initTemps();
   initCleaning();
   initHotfood();
   initDiary();
-  initPrint();
+  initFooter();
   renderAll();
+
+  // Pull shared data from the server, then push anything saved while offline.
+  syncLocationFromServer(currentLocation).then(flushPending);
+  window.addEventListener('online', flushPending);
 });

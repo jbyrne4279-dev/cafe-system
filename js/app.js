@@ -450,11 +450,43 @@ function initTabs() {
   });
 }
 
+function flashActivePanel(dir) {
+  const p = document.querySelector('.panel.is-active');
+  if (!p) return;
+  p.style.animation = 'none';
+  const kf = dir < 0 ? 'slideR' : dir > 0 ? 'slideL' : 'fade';
+  requestAnimationFrame(() => { p.style.animation = `${kf} .22s ease`; });
+}
+
+function changeDay(delta) {
+  currentDate = addDays(currentDate, delta);
+  renderAll();
+  flashActivePanel(delta);
+}
+
 function initDayNav() {
   const input = document.getElementById('recordDate');
   input.addEventListener('change', () => { currentDate = input.value || todayISO(); renderAll(); });
-  document.getElementById('prevDay').addEventListener('click', () => { currentDate = addDays(currentDate, -1); renderAll(); });
-  document.getElementById('nextDay').addEventListener('click', () => { currentDate = addDays(currentDate, 1); renderAll(); });
+  document.getElementById('prevDay').addEventListener('click', () => changeDay(-1));
+  document.getElementById('nextDay').addEventListener('click', () => changeDay(1));
+}
+
+// Swipe left → next day, swipe right → previous day.
+function initSwipe(el) {
+  let x0 = null, y0 = null, t0 = 0;
+  el.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 1) { x0 = null; return; }
+    const t = e.changedTouches[0]; x0 = t.clientX; y0 = t.clientY; t0 = Date.now();
+  }, { passive: true });
+  el.addEventListener('touchend', (e) => {
+    if (x0 == null) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - x0, dy = t.clientY - y0, dt = Date.now() - t0;
+    x0 = null;
+    if (dt < 700 && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.8) {
+      changeDay(dx < 0 ? 1 : -1);
+    }
+  }, { passive: true });
 }
 
 function initTemps() {
@@ -539,6 +571,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initHotfood();
   initDiary();
   initFooter();
+  initSwipe(document.querySelector('.app-main'));
+  initSwipe(document.querySelector('.app-header'));
   renderAll();
 
   // Pull shared data from the server, then push anything saved while offline.

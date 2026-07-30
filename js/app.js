@@ -247,12 +247,87 @@ function updateTabDots() {
   document.querySelectorAll('.tab').forEach((tab) => tab.classList.toggle('has-todo', !sectionDone(d, tab.dataset.tab)));
 }
 
+/* ---------- monthly stats dashboard (bottom of Diary) ---------- */
+
+function monthMetrics(loc, ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const dim = new Date(y, m, 0).getDate();
+  let openDays = 0, filled = 0, expected = 0, cleanDone = 0, cleanExp = 0;
+  let diarySigned = 0, flaggedDays = 0, alertReadings = 0, hotChecks = 0;
+  for (let i = 1; i <= dim; i++) {
+    const iso = `${ym}-${String(i).padStart(2, '0')}`;
+    const d = (STORE[loc] || {})[iso];
+    if (!dayHasData(d)) continue;
+    openDays++;
+    let dayFlagged = false;
+    UNITS.forEach((u) => {
+      const r = d.temps[u.id] || { am: '', pm: '' };
+      ['am', 'pm'].forEach((s) => {
+        expected++;
+        if (r[s] !== '' && !isNaN(Number(r[s]))) {
+          filled++;
+          if (evalTemp(u.type, r[s]) === 'alert') { alertReadings++; dayFlagged = true; }
+        }
+      });
+    });
+    if (dayFlagged) flaggedDays++;
+    TASKS.forEach((t) => { cleanExp++; if (d.cleaning[t.id] && d.cleaning[t.id].done) cleanDone++; });
+    if (d.diary && d.diary.name) diarySigned++;
+    hotChecks += (d.hotfood || []).length;
+  }
+  const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+  return {
+    openDays, filled, alertReadings, flaggedDays, hotChecks,
+    tempPct: pct(filled, expected), cleanPct: pct(cleanDone, cleanExp), diaryPct: pct(diarySigned, openDays),
+    flaggedPct: pct(flaggedDays, openDays),
+  };
+}
+
+function donutCard(center, pct, color, label) {
+  return `<figure class="donut-card">
+    <div class="donut" style="--p:${pct};--c:${color}"><div class="donut__hole"><span class="donut__val">${esc(center)}</span></div></div>
+    <figcaption>${esc(label)}</figcaption>
+  </figure>`;
+}
+function tile(v, l, cls) {
+  return `<div class="tile ${cls || ''}"><div class="tile__v">${esc(String(v))}</div><div class="tile__l">${esc(l)}</div></div>`;
+}
+
+function renderStats() {
+  const el = document.getElementById('monthStats');
+  if (!el) return;
+  const ym = currentDate.slice(0, 7);
+  const monthName = new Date(currentDate + 'T00:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  const s = monthMetrics(currentLocation, ym);
+
+  const head = `<h3 class="stats__title">Monthly overview</h3>
+    <p class="stats__sub">${esc(monthName)} · ${esc(locName(currentLocation))} · ${s.openDays} day${s.openDays === 1 ? '' : 's'} recorded</p>`;
+
+  if (!s.openDays) { el.innerHTML = head + '<p class="empty">No records yet this month.</p>'; return; }
+
+  el.innerHTML = head + `
+    <div class="donut-row">
+      ${donutCard(s.tempPct + '%', s.tempPct, 'var(--accent)', 'Temp checks done')}
+      ${donutCard(s.cleanPct + '%', s.cleanPct, 'var(--accent)', 'Cleaning done')}
+      ${donutCard(s.diaryPct + '%', s.diaryPct, 'var(--accent)', 'Diary signed')}
+      ${donutCard(String(s.flaggedDays), s.flaggedPct, 'var(--bad)', 'Days flagged')}
+    </div>
+    <div class="tile-row">
+      ${tile(s.openDays, 'Days recorded')}
+      ${tile(s.filled, 'Temp readings')}
+      ${tile(s.alertReadings, 'Out-of-range', s.alertReadings ? 'tile--alert' : '')}
+      ${tile(s.hotChecks, 'Hot food checks')}
+    </div>
+    <p class="stats__legend">Purple rings show how consistently checks were completed this month. Red shows days with an out-of-range temperature.</p>`;
+}
+
 function renderAll() {
   renderDayLabel();
   renderTemps();
   renderCleaning();
   renderHotfood();
   renderDiary();
+  renderStats();
   updateTabDots();
 }
 
@@ -371,6 +446,7 @@ function initTabs() {
     document.querySelectorAll('.panel').forEach((p) => p.classList.remove('is-active'));
     btn.classList.add('is-active');
     document.getElementById('panel-' + btn.dataset.tab).classList.add('is-active');
+    if (btn.dataset.tab === 'diary') renderStats();
   });
 }
 

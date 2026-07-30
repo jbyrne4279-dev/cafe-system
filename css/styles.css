@@ -24,6 +24,7 @@
   --ok: #248a3d;    --ok-bg: #e4f7e8;   --ok-line: #b7e8c2;
   --watch: #a5620a; --watch-bg: #fdf1dc; --watch-line: #f4d9a6;
   --bad: #d70015;   --bad-bg: #ffe5e5;  --bad-line: #f6b8b8;
+  --donut-track: #e6e6ea;
 
   --radius: 16px;
   --radius-sm: 11px;
@@ -52,6 +53,7 @@
     --ok: #30d158;   --ok-bg: #123a1e;   --ok-line: #1f5c30;
     --watch: #ffb340; --watch-bg: #3a2c10; --watch-line: #614a1c;
     --bad: #ff453a;  --bad-bg: #3a1414;  --bad-line: #5e2020;
+    --donut-track: #2c2c2e;
     --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.3);
   }
 }
@@ -226,6 +228,36 @@ input, select, textarea { font-size: 16px; }
 .diary-sign input:focus { outline: 2px solid var(--accent); }
 .diary-foot { font-size: 11px; color: var(--muted); margin: 10px 0 0; }
 
+/* ---------- Monthly stats dashboard ---------- */
+.stats { margin-top: 20px; padding-top: 18px; border-top: 0.5px solid var(--line); }
+.stats__title { font-size: 18px; font-weight: 700; margin: 0 0 3px; letter-spacing: -0.02em; }
+.stats__sub { font-size: 13px; color: var(--muted); margin: 0 0 16px; }
+.stats__legend { font-size: 12px; color: var(--muted); margin: 12px 2px 0; }
+
+.donut-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.donut-card {
+  margin: 0; background: var(--card); border: 0.5px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 16px 12px; display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.donut {
+  position: relative; width: 96px; height: 96px; border-radius: 50%;
+  background: conic-gradient(var(--c, var(--accent)) calc(var(--p, 0) * 1%), var(--donut-track) 0);
+}
+.donut__hole { position: absolute; inset: 11px; border-radius: 50%; background: var(--card); display: grid; place-items: center; }
+.donut__val { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+.donut-card figcaption { font-size: 13px; font-weight: 600; color: var(--muted); text-align: center; }
+
+.tile-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
+.tile { background: var(--card); border: 0.5px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 13px 15px; }
+.tile__v { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+.tile__l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.tile--alert .tile__v { color: var(--bad); }
+
+@media (min-width: 620px) {
+  .donut-row { grid-template-columns: repeat(4, 1fr); }
+  .tile-row { grid-template-columns: repeat(4, 1fr); }
+}
+
 /* ---------- Buttons ---------- */
 .btn { border: none; border-radius: var(--radius-sm); padding: 13px 18px; font-size: 16px; font-weight: 600; cursor: pointer; transition: transform .1s, background .15s; letter-spacing: -0.01em; }
 .btn:active { transform: scale(.97); }
@@ -286,7 +318,7 @@ input, select, textarea { font-size: 16px; }
 /* ---------- Print (single day log sheet) ---------- */
 .print-only { display: none; }
 @media print {
-  .app-header, .tabbar, .app-footer, .btn, .row-del, .hf-form, .panel__hint { display: none !important; }
+  .app-header, .tabbar, .app-footer, .btn, .row-del, .hf-form, .panel__hint, .stats { display: none !important; }
   .print-only { display: block; margin-bottom: 12px; }
   #printHeader h1 { margin: 0; font-size: 20px; }
   #printHeader p { margin: 2px 0 0; color: #333; font-size: 14px; }

@@ -42,7 +42,25 @@ website on the café's tablet or phone.
 index.html      Layout: header, week navigation, and the five sections
 css/styles.css  Styling (mobile-first, print-friendly)
 js/app.js       App logic, weekly data model and browser storage
+server.js       Tiny zero-dependency static server (used for hosting)
+railway.json    Railway deployment config
+package.json    Start script (npm start → node server.js)
 ```
+
+## Deploying to Railway
+
+The repo is Railway-ready. In the Railway dashboard:
+
+1. **New Project → Deploy from GitHub repo** and pick `jbyrne4279-dev/cafe-system`
+   (branch `main`).
+2. Railway auto-detects Node, runs `npm install`, then `npm start`
+   (`node server.js`). No extra settings needed — the server binds to the
+   `PORT` Railway provides.
+3. Under the service's **Settings → Networking**, click **Generate Domain** to
+   get a public URL.
+
+After the first connection, every push to `main` redeploys automatically.
+Health checks hit `/healthz`.
 
 ## Temperature rules
 

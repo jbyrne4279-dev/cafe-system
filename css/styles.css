@@ -19,6 +19,7 @@
   --card: #ffffff;             /* secondarySystemGroupedBackground */
   --fill: #78788014;           /* input fill */
 
+  --freezer: #2563eb;
   --ok: #248a3d;    --ok-bg: #e4f7e8;   --ok-line: #b7e8c2;
   --watch: #a5620a; --watch-bg: #fdf1dc; --watch-line: #f4d9a6;
   --bad: #d70015;   --bad-bg: #ffe5e5;  --bad-line: #f6b8b8;
@@ -39,6 +40,7 @@
   :root {
     --accent: #2dd4bf;
     --accent-press: #14b8a6;
+    --freezer: #60a5fa;
     --ink: #f5f5f7;
     --muted: #98989f;
     --faint: #5a5a60;
@@ -147,12 +149,16 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 .week-table thead .rowhead { z-index: 3; background: var(--bg-elev); }
 
-.unit-cell { display: flex; align-items: center; gap: 6px; }
-.unit-cell input.uname { flex: 1; border: none; background: none; font-size: 15px; font-weight: 600; padding: 8px 4px; min-width: 80px; color: var(--ink); }
-.unit-cell input.uname:focus { outline: none; background: var(--fill); border-radius: 8px; }
-.unit-cell select.utype { border: none; background: var(--fill); border-radius: 8px; font-size: 13px; padding: 6px; color: var(--ink); }
-.row-remove { background: none; border: none; color: var(--faint); cursor: pointer; font-size: 20px; padding: 2px 6px; line-height: 1; }
-.row-remove:active { color: var(--bad); transform: scale(.9); }
+/* Fixed unit / task labels (read-only — staff just enter values) */
+.unit-label { display: flex; flex-direction: column; gap: 3px; }
+.unit-label__name { font-size: 15px; font-weight: 600; color: var(--ink); line-height: 1.25; }
+.unit-badge {
+  align-self: flex-start; font-size: 10.5px; font-weight: 600; letter-spacing: .01em;
+  padding: 2px 8px; border-radius: 999px; background: var(--fill); color: var(--muted);
+  white-space: nowrap;
+}
+.unit-badge--fridge { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.unit-badge--freezer { background: color-mix(in srgb, var(--freezer) 16%, transparent); color: var(--freezer); }
 
 /* Temperature reading cells (AM/PM stacked) */
 .temp-cell { padding: 4px; }
@@ -295,14 +301,11 @@ button { -webkit-tap-highlight-color: transparent; }
   .app-footer .btn { flex: 1; }
 
   /* Keep the frozen unit/task column compact so day columns stay visible.
-     width:max-content stops the table stretching slack into the first column;
-     the unit name wraps onto its own line so it stays fully readable. */
+     width:max-content stops the table stretching slack into the first column. */
   .week-table { min-width: 100%; width: max-content; }
   .week-table .rowhead { width: 132px; min-width: 132px; max-width: 132px; padding: 6px 8px; }
-  .unit-cell { flex-wrap: wrap; gap: 4px 6px; }
-  .unit-cell input.uname { flex: 1 1 100%; min-width: 0; font-size: 14px; padding: 5px 2px; }
-  .unit-cell select.utype { flex: 0 1 auto; font-size: 11px; padding: 4px 2px; max-width: 92px; }
-  .row-remove { font-size: 17px; padding: 2px 4px; }
+  .unit-label__name { font-size: 14px; }
+  .unit-badge { font-size: 10px; padding: 1px 7px; }
   .temp-slot input, .clean-cell input, .day-input { width: 46px; font-size: 16px; }
   .clean-cell { min-width: 62px; }
 }

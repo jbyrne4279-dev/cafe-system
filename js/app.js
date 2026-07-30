@@ -1,17 +1,21 @@
 /* North Herts Museum Café — Daily Records (base app)
  *
- * Built to mirror the café's paper forms:
+ * Mirrors the café's paper forms:
  *   1. Fridge & Freezer Temperature Reading Chart (weekly grid, AM/PM readings)
  *   2. Daily Cleaning Tasks (weekly grid)
  *   3. Daily Diary — FSA "Safer Food, Better Business"
  *   4. Hot Food temperatures (extra log)
  *
+ * The unit list and cleaning tasks are FIXED (taken straight from the café's
+ * sheets) so staff never have to choose a fridge/freezer or manage the list —
+ * they just enter the temperature or tick a task. To change the fixed lists,
+ * edit UNITS / TASKS below.
+ *
  * Everything is stored per WEEK (keyed by the Monday it commences) in the
- * browser via localStorage, so it works with no server. Swap the storage
- * layer later for cloud sync without changing the rest of the app.
+ * browser via localStorage, so it works with no server.
  */
 
-const STORE_KEY = 'nhmc-cafe-records-v2';
+const STORE_KEY = 'nhmc-cafe-records-v3';
 
 const DAYS = [
   { key: 'mon', label: 'Monday' },
@@ -23,33 +27,33 @@ const DAYS = [
   { key: 'sun', label: 'Sunday' },
 ];
 
-// Default units, taken from the café's temperature chart.
-const DEFAULT_UNITS = [
-  { name: 'Double Fridge', type: 'fridge' },
-  { name: 'Double Freezer', type: 'freezer' },
-  { name: 'Storage Freezer', type: 'freezer' },
-  { name: 'Display Cabinet', type: 'fridge' },
-  { name: 'Milk Fridge', type: 'fridge' },
-  { name: 'Drinks Fridge', type: 'fridge' },
-  { name: 'Ice cream Freezer', type: 'freezer' },
+// Fixed units from the café's temperature chart (stable ids so readings carry
+// across weeks). Type drives the colour thresholds only.
+const UNITS = [
+  { id: 'double-fridge', name: 'Double Fridge', type: 'fridge' },
+  { id: 'double-freezer', name: 'Double Freezer', type: 'freezer' },
+  { id: 'storage-freezer', name: 'Storage Freezer', type: 'freezer' },
+  { id: 'display-cabinet', name: 'Display Cabinet', type: 'fridge' },
+  { id: 'milk-fridge', name: 'Milk Fridge', type: 'fridge' },
+  { id: 'drinks-fridge', name: 'Drinks Fridge', type: 'fridge' },
+  { id: 'ice-cream-freezer', name: 'Ice cream Freezer', type: 'freezer' },
 ];
 
-// Default cleaning tasks, taken from the café's cleaning sheet.
-const DEFAULT_TASKS = [
-  'Walls, Doors and Canopy',
-  'Equipment and Surfaces',
-  "Floors, Drains and Gully's",
-  'Coffee Machine Exterior (use blank head)',
-  'Sinks and Shelving',
-  'Waste Bins',
-  'Microwave',
-  'Fridges and Contact Points',
-  'Dishwasher',
-  'Chopping Boards',
-  'Labels check café and kitchen',
+// Fixed cleaning tasks from the café's cleaning sheet.
+const TASKS = [
+  { id: 'walls-doors-canopy', name: 'Walls, Doors and Canopy' },
+  { id: 'equipment-surfaces', name: 'Equipment and Surfaces' },
+  { id: 'floors-drains-gullys', name: "Floors, Drains and Gully's" },
+  { id: 'coffee-machine-exterior', name: 'Coffee Machine Exterior (use blank head)' },
+  { id: 'sinks-shelving', name: 'Sinks and Shelving' },
+  { id: 'waste-bins', name: 'Waste Bins' },
+  { id: 'microwave', name: 'Microwave' },
+  { id: 'fridges-contact-points', name: 'Fridges and Contact Points' },
+  { id: 'dishwasher', name: 'Dishwasher' },
+  { id: 'chopping-boards', name: 'Chopping Boards' },
+  { id: 'labels-check', name: 'Labels check café and kitchen' },
 ];
 
-// Hot food core-temperature rules.
 const HOT_RULES = {
   cooking: (t) => t >= 75,
   reheating: (t) => t >= 75,
@@ -61,28 +65,22 @@ const HOT_RULES = {
 function toISO(d) {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
-
-// Monday of the week containing the given ISO date.
 function mondayOf(iso) {
   const d = new Date(iso + 'T00:00:00');
-  const day = (d.getDay() + 6) % 7; // 0 = Monday
+  const day = (d.getDay() + 6) % 7;
   d.setDate(d.getDate() - day);
   return toISO(d);
 }
-
 function addDays(iso, n) {
   const d = new Date(iso + 'T00:00:00');
   d.setDate(d.getDate() + n);
   return toISO(d);
 }
-
 function fmtDay(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
-
 function todayISO() { return toISO(new Date()); }
 function nowTime() { return new Date().toTimeString().slice(0, 5); }
-
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
 function esc(str) {
@@ -106,29 +104,28 @@ function emptyDayMap(fill) {
 }
 
 function blankWeek() {
-  const units = DEFAULT_UNITS.map((u) => ({ id: uid(), name: u.name, type: u.type }));
-  const tasks = DEFAULT_TASKS.map((t) => ({ id: uid(), name: t }));
   const temps = {};
-  units.forEach((u) => { temps[u.id] = emptyDayMap(() => ({ am: '', pm: '' })); });
+  UNITS.forEach((u) => { temps[u.id] = emptyDayMap(() => ({ am: '', pm: '' })); });
   const cleaning = {};
-  tasks.forEach((t) => { cleaning[t.id] = emptyDayMap(''); });
+  TASKS.forEach((t) => { cleaning[t.id] = emptyDayMap(''); });
   const diary = {};
   DAYS.forEach((d) => { diary[d.key] = { notes: '', opening: false, closing: false, name: '', signed: '' }; });
-  return { units, tasks, temps, officer: emptyDayMap(''), cleaning, diary, hotfood: [] };
+  return { temps, officer: emptyDayMap(''), cleaning, diary, hotfood: [] };
 }
 
 function getWeek(monday) {
   const all = loadAll();
   if (!all[monday]) { all[monday] = blankWeek(); saveAll(all); }
   const w = all[monday];
-  // Forward-compatible guards in case older saved weeks are missing a field.
-  w.units = w.units || [];
-  w.tasks = w.tasks || [];
+  // Guards so a partially-saved week (or a newly added unit/task) always has slots.
   w.temps = w.temps || {};
-  w.officer = w.officer || emptyDayMap('');
   w.cleaning = w.cleaning || {};
+  w.officer = w.officer || emptyDayMap('');
   w.diary = w.diary || {};
   w.hotfood = w.hotfood || [];
+  UNITS.forEach((u) => { if (!w.temps[u.id]) w.temps[u.id] = emptyDayMap(() => ({ am: '', pm: '' })); });
+  TASKS.forEach((t) => { if (!w.cleaning[t.id]) w.cleaning[t.id] = emptyDayMap(''); });
+  DAYS.forEach((d) => { if (!w.diary[d.key]) w.diary[d.key] = { notes: '', opening: false, closing: false, name: '', signed: '' }; });
   return w;
 }
 
@@ -141,7 +138,6 @@ function saveWeek(monday, week) {
 /* ---------- state ---------- */
 
 let currentMonday = mondayOf(todayISO());
-
 function week() { return getWeek(currentMonday); }
 function commit(w) { saveWeek(currentMonday, w); }
 
@@ -155,49 +151,45 @@ function evalTemp(type, value) {
     if (t <= -12) return 'watch';
     return 'alert';
   }
-  // fridge
   if (t <= 5) return 'ok';
   if (t <= 8) return 'watch';
   return 'alert';
 }
+function typeLabel(type) { return type === 'freezer' ? 'Freezer' : 'Fridge'; }
+function typeTarget(type) { return type === 'freezer' ? '≤ -18°C' : '0–5°C'; }
 
 /* ---------- renderers ---------- */
 
 function dayHeaders() {
-  return DAYS.map((d) => `<th>${d.label}<br><span style="font-weight:400;color:var(--muted)">${fmtDay(addDays(currentMonday, DAYS.indexOf(d)))}</span></th>`).join('');
+  return DAYS.map((d, i) => `<th>${d.label}<br><span style="font-weight:400;color:var(--muted)">${fmtDay(addDays(currentMonday, i))}</span></th>`).join('');
 }
 
 function renderTemps() {
   const w = week();
   let rows = '';
-  w.units.forEach((u) => {
+  UNITS.forEach((u) => {
     let cells = '';
     DAYS.forEach((d) => {
-      const rec = w.temps[u.id]?.[d.key] || { am: '', pm: '' };
+      const rec = w.temps[u.id][d.key];
       const amCls = evalTemp(u.type, rec.am);
       const pmCls = evalTemp(u.type, rec.pm);
       cells += `<td class="temp-cell">
-        <div class="temp-slot"><label>AM</label><input class="${amCls}" data-role="temp" data-unit="${u.id}" data-day="${d.key}" data-slot="am" value="${esc(rec.am)}" inputmode="decimal" /></div>
-        <div class="temp-slot"><label>PM</label><input class="${pmCls}" data-role="temp" data-unit="${u.id}" data-day="${d.key}" data-slot="pm" value="${esc(rec.pm)}" inputmode="decimal" /></div>
+        <div class="temp-slot"><label>AM</label><input class="${amCls}" data-role="temp" data-unit="${u.id}" data-day="${d.key}" data-slot="am" value="${esc(rec.am)}" inputmode="decimal" placeholder="—" /></div>
+        <div class="temp-slot"><label>PM</label><input class="${pmCls}" data-role="temp" data-unit="${u.id}" data-day="${d.key}" data-slot="pm" value="${esc(rec.pm)}" inputmode="decimal" placeholder="—" /></div>
       </td>`;
     });
     rows += `<tr>
-      <td class="rowhead"><div class="unit-cell">
-        <input class="uname" data-role="unit-name" data-unit="${u.id}" value="${esc(u.name)}" />
-        <select class="utype" data-role="unit-type" data-unit="${u.id}">
-          <option value="fridge" ${u.type === 'fridge' ? 'selected' : ''}>Fridge</option>
-          <option value="freezer" ${u.type === 'freezer' ? 'selected' : ''}>Freezer</option>
-        </select>
-        <button class="row-remove" data-role="remove-unit" data-unit="${u.id}" title="Remove unit">&times;</button>
+      <td class="rowhead"><div class="unit-label">
+        <span class="unit-label__name">${esc(u.name)}</span>
+        <span class="unit-badge unit-badge--${u.type}">${typeLabel(u.type)} · ${typeTarget(u.type)}</span>
       </div></td>${cells}</tr>`;
   });
 
-  // Officer initials row
   let officerCells = '';
   DAYS.forEach((d) => {
     officerCells += `<td><input class="day-input" data-role="officer" data-day="${d.key}" value="${esc(w.officer[d.key] || '')}" maxlength="4" placeholder="—" /></td>`;
   });
-  rows += `<tr class="officer-row"><td class="rowhead">Officer Initials</td>${officerCells}</tr>`;
+  rows += `<tr class="officer-row"><td class="rowhead"><span class="unit-label__name">Officer Initials</span></td>${officerCells}</tr>`;
 
   document.getElementById('tempGrid').innerHTML =
     `<table class="week-table temp-table"><thead><tr><th class="rowhead">Unit</th>${dayHeaders()}</tr></thead><tbody>${rows}</tbody></table>`;
@@ -206,19 +198,16 @@ function renderTemps() {
 function renderCleaning() {
   const w = week();
   let rows = '';
-  w.tasks.forEach((t) => {
+  TASKS.forEach((t) => {
     let cells = '';
     DAYS.forEach((d) => {
-      const val = w.cleaning[t.id]?.[d.key] || '';
+      const val = w.cleaning[t.id][d.key] || '';
       cells += `<td class="clean-cell ${val ? 'done' : ''}" data-role="clean-cell" data-task="${t.id}" data-day="${d.key}">
         <input data-role="clean" data-task="${t.id}" data-day="${d.key}" value="${esc(val)}" maxlength="4" placeholder="" />
       </td>`;
     });
     rows += `<tr>
-      <td class="rowhead"><div class="unit-cell">
-        <input class="uname" data-role="task-name" data-task="${t.id}" value="${esc(t.name)}" />
-        <button class="row-remove" data-role="remove-task" data-task="${t.id}" title="Remove task">&times;</button>
-      </div></td>${cells}</tr>`;
+      <td class="rowhead"><div class="unit-label"><span class="unit-label__name">${esc(t.name)}</span></div></td>${cells}</tr>`;
   });
   document.getElementById('cleaningGrid').innerHTML =
     `<table class="week-table"><thead><tr><th class="rowhead">Task</th>${dayHeaders()}</tr></thead><tbody>${rows}</tbody></table>`;
@@ -248,7 +237,6 @@ function renderDiary() {
 
 function renderHotfood() {
   const w = week();
-  // keep the day dropdown in sync
   const daySel = document.getElementById('hotfoodDay');
   if (daySel && !daySel.options.length) {
     daySel.innerHTML = DAYS.map((d) => `<option value="${d.key}">${d.label}</option>`).join('');
@@ -280,9 +268,9 @@ function renderSummary() {
   const perDay = {};
   DAYS.forEach((d) => { perDay[d.key] = { readings: 0, alerts: 0, clean: 0, signed: false }; });
 
-  w.units.forEach((u) => {
+  UNITS.forEach((u) => {
     DAYS.forEach((d) => {
-      const rec = w.temps[u.id]?.[d.key] || {};
+      const rec = w.temps[u.id][d.key];
       ['am', 'pm'].forEach((slot) => {
         if (rec[slot] !== '' && rec[slot] != null && !isNaN(Number(rec[slot]))) {
           readings++; perDay[d.key].readings++;
@@ -292,10 +280,10 @@ function renderSummary() {
     });
   });
 
-  w.tasks.forEach((t) => {
+  TASKS.forEach((t) => {
     DAYS.forEach((d) => {
       cleanTotal++;
-      if (w.cleaning[t.id]?.[d.key]) { cleanDone++; perDay[d.key].clean++; }
+      if (w.cleaning[t.id][d.key]) { cleanDone++; perDay[d.key].clean++; }
     });
   });
 
@@ -317,7 +305,7 @@ function renderSummary() {
       <td>${d.label} <span style="color:var(--muted)">${fmtDay(addDays(currentMonday, i))}</span></td>
       <td>${p.readings}</td>
       <td>${p.alerts ? `<span class="badge badge--bad">${p.alerts}</span>` : '0'}</td>
-      <td>${p.clean}/${w.tasks.length}</td>
+      <td>${p.clean}/${TASKS.length}</td>
       <td>${p.signed ? '<span class="badge badge--ok">Signed</span>' : '<span class="badge badge--bad">—</span>'}</td>
     </tr>`;
   }).join('');
@@ -354,52 +342,26 @@ function initTabs() {
 
 function initWeekNav() {
   const input = document.getElementById('weekDate');
-  input.addEventListener('change', () => {
-    currentMonday = mondayOf(input.value || todayISO());
-    renderAll();
-  });
+  input.addEventListener('change', () => { currentMonday = mondayOf(input.value || todayISO()); renderAll(); });
   document.getElementById('prevWeek').addEventListener('click', () => { currentMonday = addDays(currentMonday, -7); renderAll(); });
   document.getElementById('nextWeek').addEventListener('click', () => { currentMonday = addDays(currentMonday, 7); renderAll(); });
 }
 
-// Delegated handler for the temperature grid.
+// Temperature grid: only temp readings and officer initials are editable.
 function initTempGrid() {
-  const grid = document.getElementById('tempGrid');
-  grid.addEventListener('input', (e) => {
+  document.getElementById('tempGrid').addEventListener('input', (e) => {
     const el = e.target;
-    const role = el.dataset.role;
     const w = week();
-    if (role === 'temp') {
-      const u = w.units.find((x) => x.id === el.dataset.unit);
-      w.temps[el.dataset.unit] = w.temps[el.dataset.unit] || emptyDayMap(() => ({ am: '', pm: '' }));
+    if (el.dataset.role === 'temp') {
+      const u = UNITS.find((x) => x.id === el.dataset.unit);
       w.temps[el.dataset.unit][el.dataset.day][el.dataset.slot] = el.value.trim();
       commit(w);
       el.className = evalTemp(u ? u.type : 'fridge', el.value.trim());
-    } else if (role === 'unit-name') {
-      const u = w.units.find((x) => x.id === el.dataset.unit);
-      if (u) { u.name = el.value; commit(w); }
-    } else if (role === 'officer') {
+    } else if (el.dataset.role === 'officer') {
       w.officer[el.dataset.day] = el.value.toUpperCase();
       el.value = w.officer[el.dataset.day];
       commit(w);
     }
-  });
-  grid.addEventListener('change', (e) => {
-    const el = e.target;
-    if (el.dataset.role !== 'unit-type') return;
-    const w = week();
-    const u = w.units.find((x) => x.id === el.dataset.unit);
-    if (u) { u.type = el.value; commit(w); renderTemps(); }
-  });
-  grid.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-role="remove-unit"]');
-    if (!btn) return;
-    const w = week();
-    if (!confirm('Remove this unit and its readings for this week?')) return;
-    w.units = w.units.filter((x) => x.id !== btn.dataset.unit);
-    delete w.temps[btn.dataset.unit];
-    commit(w);
-    renderTemps();
   });
 }
 
@@ -407,30 +369,15 @@ function initCleaningGrid() {
   const grid = document.getElementById('cleaningGrid');
   grid.addEventListener('input', (e) => {
     const el = e.target;
+    if (el.dataset.role !== 'clean') return;
     const w = week();
-    if (el.dataset.role === 'clean') {
-      w.cleaning[el.dataset.task] = w.cleaning[el.dataset.task] || emptyDayMap('');
-      w.cleaning[el.dataset.task][el.dataset.day] = el.value.toUpperCase();
-      el.value = w.cleaning[el.dataset.task][el.dataset.day];
-      el.closest('.clean-cell').classList.toggle('done', !!el.value);
-      commit(w);
-    } else if (el.dataset.role === 'task-name') {
-      const t = w.tasks.find((x) => x.id === el.dataset.task);
-      if (t) { t.name = el.value; commit(w); }
-    }
+    w.cleaning[el.dataset.task][el.dataset.day] = el.value.toUpperCase();
+    el.value = w.cleaning[el.dataset.task][el.dataset.day];
+    el.closest('.clean-cell').classList.toggle('done', !!el.value);
+    commit(w);
   });
   // Tap an empty cell (not the input) to quick-tick it.
   grid.addEventListener('click', (e) => {
-    const removeBtn = e.target.closest('[data-role="remove-task"]');
-    if (removeBtn) {
-      const w = week();
-      if (!confirm('Remove this cleaning task for this week?')) return;
-      w.tasks = w.tasks.filter((x) => x.id !== removeBtn.dataset.task);
-      delete w.cleaning[removeBtn.dataset.task];
-      commit(w);
-      renderCleaning();
-      return;
-    }
     const cell = e.target.closest('.clean-cell');
     if (cell && e.target === cell) {
       const input = cell.querySelector('input');
@@ -441,21 +388,14 @@ function initCleaningGrid() {
 }
 
 function initDiary() {
-  document.getElementById('diaryCards').addEventListener('input', (e) => {
-    const el = e.target;
-    if (el.dataset.role !== 'diary') return;
+  const cards = document.getElementById('diaryCards');
+  const write = (el) => {
     const w = week();
-    const field = el.dataset.field;
-    w.diary[el.dataset.day][field] = el.type === 'checkbox' ? el.checked : el.value;
+    w.diary[el.dataset.day][el.dataset.field] = el.type === 'checkbox' ? el.checked : el.value;
     commit(w);
-  });
-  document.getElementById('diaryCards').addEventListener('change', (e) => {
-    const el = e.target;
-    if (el.dataset.role !== 'diary' || el.type !== 'checkbox') return;
-    const w = week();
-    w.diary[el.dataset.day][el.dataset.field] = el.checked;
-    commit(w);
-  });
+  };
+  cards.addEventListener('input', (e) => { if (e.target.dataset.role === 'diary') write(e.target); });
+  cards.addEventListener('change', (e) => { if (e.target.dataset.role === 'diary' && e.target.type === 'checkbox') write(e.target); });
 }
 
 function initHotfood() {
@@ -486,31 +426,6 @@ function initHotfood() {
   });
 }
 
-function initAddForms() {
-  document.getElementById('addUnitForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const f = e.target;
-    const w = week();
-    const id = uid();
-    w.units.push({ id, name: f.name.value.trim(), type: f.type.value });
-    w.temps[id] = emptyDayMap(() => ({ am: '', pm: '' }));
-    commit(w);
-    f.reset();
-    renderTemps();
-  });
-  document.getElementById('addTaskForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const f = e.target;
-    const w = week();
-    const id = uid();
-    w.tasks.push({ id, name: f.name.value.trim() });
-    w.cleaning[id] = emptyDayMap('');
-    commit(w);
-    f.reset();
-    renderCleaning();
-  });
-}
-
 function initToolbar() {
   document.getElementById('exportBtn').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify({ weekCommencing: currentMonday, ...week() }, null, 2)], { type: 'application/json' });
@@ -534,7 +449,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initCleaningGrid();
   initDiary();
   initHotfood();
-  initAddForms();
   initToolbar();
   renderAll();
 });

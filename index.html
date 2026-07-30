@@ -42,14 +42,6 @@
         <p class="panel__hint">Two readings a day (AM / PM). Fridges target <strong>0–5&deg;C</strong> (max 8&deg;C), freezers <strong>-18&deg;C or below</strong>. Cells colour automatically.</p>
       </div>
       <div class="grid-scroll" id="tempGrid"></div>
-      <form class="mini-form" id="addUnitForm" autocomplete="off">
-        <input type="text" name="name" placeholder="Add a unit (e.g. Prep fridge)" required />
-        <select name="type">
-          <option value="fridge">Fridge</option>
-          <option value="freezer">Freezer</option>
-        </select>
-        <button class="btn btn--add" type="submit">Add unit</button>
-      </form>
       <p class="legend">
         <span class="legend__chip legend__chip--ok"></span> In range
         <span class="legend__chip legend__chip--watch"></span> Check
@@ -61,13 +53,9 @@
     <section class="panel" id="panel-cleaning">
       <div class="panel__head">
         <h2>Daily Cleaning Tasks</h2>
-        <p class="panel__hint">Tick (or add initials) as each task is completed. Tap a cell to mark it done.</p>
+        <p class="panel__hint">Tap a cell to tick it, or type your initials. All tasks are already listed.</p>
       </div>
       <div class="grid-scroll" id="cleaningGrid"></div>
-      <form class="mini-form" id="addTaskForm" autocomplete="off">
-        <input type="text" name="name" placeholder="Add a cleaning task" required />
-        <button class="btn btn--add" type="submit">Add task</button>
-      </form>
     </section>
 
     <!-- DAILY DIARY (SFBB) -->

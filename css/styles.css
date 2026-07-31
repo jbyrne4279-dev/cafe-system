@@ -86,7 +86,7 @@ input, select, textarea { font-size: 16px; }
 /* Compact location picker, pinned to the top-right of the header. It's a clear
    pill button with a chevron; the native <select> sits invisibly on top so a
    tap opens the OS location list. */
-.loc-picker { position: relative; align-self: flex-end; }
+.loc-picker { position: relative; align-self: flex-start; }
 .loc-btn {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 7px 8px 7px 12px; border: none; border-radius: 999px;
@@ -114,25 +114,30 @@ input, select, textarea { font-size: 16px; }
   width: 100%; max-width: 340px;
 }
 .day-nav__btn {
-  width: 42px; height: 42px; border: none; background: var(--fill); border-radius: 50%;
+  width: 42px; height: 42px; border: none; border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
   font-size: 24px; line-height: 1; color: var(--accent); cursor: pointer; transition: transform .1s, background .15s;
   flex: 0 0 auto;
 }
-.day-nav__btn:active { transform: scale(.9); background: var(--line); }
+.day-nav__btn:active { transform: scale(.9); background: color-mix(in srgb, var(--accent) 25%, var(--card)); }
 .day-nav__label {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
   min-width: 128px; flex: 1 1 auto;
   touch-action: pan-y;      /* let vertical scroll pass, capture horizontal drags */
   cursor: grab; will-change: transform;
 }
-.day-nav__weekday { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
-.day-nav__label input { padding: 6px 10px; border: none; background: var(--fill); border-radius: 9px; font-size: 14px; color: var(--ink); text-align: center; }
+.day-nav__weekday { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 7px; color: var(--accent); }
+.day-nav__label input {
+  padding: 6px 12px; border: none; border-radius: 9px; font-size: 14px; font-weight: 600; text-align: center;
+  background: color-mix(in srgb, var(--accent) 14%, var(--card));
+  color: var(--accent);
+}
 .today-badge {
   font-size: 10px; font-weight: 800; letter-spacing: .06em; color: var(--today-ink);
   background: var(--today); padding: 2px 7px; border-radius: 999px;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--today) 35%, transparent);
 }
-.day-nav.is-today .day-nav__label input { box-shadow: 0 0 0 2px var(--today); }
+.day-nav.is-today .day-nav__label input { box-shadow: 0 0 0 2px var(--accent); }
 
 /* ---------- Main ---------- */
 .app-main {

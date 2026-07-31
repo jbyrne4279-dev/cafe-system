@@ -36,6 +36,14 @@ const UNITS_BY_LOCATION = {
     { id: 'drinks-fridge', name: 'Drinks Fridge', type: 'fridge' },
     { id: 'freezer', name: 'Freezer', type: 'freezer' },
   ],
+  bancroft: [
+    { id: 'gelato-freezer', name: 'Gelato Freezer', type: 'freezer' },
+    { id: 'ice-cream-freezer-1', name: 'Ice Cream Freezer 1', type: 'freezer' },
+    { id: 'ice-cream-freezer-2', name: 'Ice Cream Freezer 2', type: 'freezer' },
+    { id: 'drinks-fridge', name: 'Drinks Fridge', type: 'fridge' },
+    { id: 'fridge-1', name: 'Fridge 1', type: 'fridge' },
+    { id: 'fridge-2', name: 'Fridge 2', type: 'fridge' },
+  ],
 };
 const DEFAULT_UNITS = UNITS_BY_LOCATION.museum;
 function unitsFor(loc) { return UNITS_BY_LOCATION[loc] || DEFAULT_UNITS; }

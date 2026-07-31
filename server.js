@@ -40,6 +40,31 @@ function persist() {
   return writeChain;
 }
 
+/* ---- one-time demo seed ----
+ * On first boot, fill in any day-records from seed-data.json that aren't
+ * already present, so the app shows a realistic history. A marker file in the
+ * data volume ensures this runs only once and never overwrites real entries. */
+function seedOnce() {
+  const marker = path.join(DATA_DIR, '.seeded');
+  const seedFile = path.join(ROOT, 'seed-data.json');
+  try {
+    if (fs.existsSync(marker) || !fs.existsSync(seedFile)) return;
+    const seed = JSON.parse(fs.readFileSync(seedFile, 'utf8'));
+    let added = 0;
+    for (const loc of Object.keys(seed)) {
+      if (!store[loc]) store[loc] = {};
+      for (const date of Object.keys(seed[loc])) {
+        if (!store[loc][date]) { store[loc][date] = seed[loc][date]; added++; }
+      }
+    }
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(marker, new Date().toISOString());
+    if (added) persist();
+    console.log(`Demo seed: added ${added} day-records.`);
+  } catch (e) { console.error('seed error:', e.message); }
+}
+seedOnce();
+
 function sendJSON(res, code, obj) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(obj));

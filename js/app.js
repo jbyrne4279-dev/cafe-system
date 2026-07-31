@@ -14,7 +14,7 @@ const PENDING_KEY = 'nhmc-cafe-pending';    // ["location|date", ...]
 const LOCATIONS = [
   { id: 'museum', name: 'North Herts Museum Café', icon: '☕' },
   { id: 'howard-park', name: 'Howard Park', icon: '🌳' },
-  { id: 'bancroft', name: 'Bancroft', icon: '🌳' },
+  { id: 'bancroft', name: 'Bancroft', icon: '🌳', tint: 'orange' },
 ];
 
 // Fridge/freezer units differ per café. Each location lists its own; anything
@@ -77,6 +77,12 @@ function longDate(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString('
 function weekday(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long' }); }
 function locName(id) { return (LOCATIONS.find((l) => l.id === id) || {}).name || id; }
 function locIcon(id) { return (LOCATIONS.find((l) => l.id === id) || {}).icon || '☕'; }
+function locTint(id) { return (LOCATIONS.find((l) => l.id === id) || {}).tint || ''; }
+function paintLogo() {
+  const el = document.getElementById('locLogo');
+  el.textContent = locIcon(currentLocation);
+  el.className = 'loc-btn__logo' + (locTint(currentLocation) ? ' loc-btn__logo--' + locTint(currentLocation) : '');
+}
 
 /* ---------- storage ---------- */
 
@@ -188,7 +194,7 @@ function renderLocations() {
   const sel = document.getElementById('locationSelect');
   sel.innerHTML = LOCATIONS.map((l) => `<option value="${l.id}" ${l.id === currentLocation ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
   document.getElementById('locCurrent').textContent = locName(currentLocation);
-  document.getElementById('locLogo').textContent = locIcon(currentLocation);
+  paintLogo();
 }
 
 function renderDayLabel() {
@@ -457,7 +463,7 @@ function initLocation() {
     currentLocation = sel.value;
     localStorage.setItem(LOC_KEY, currentLocation);
     document.getElementById('locCurrent').textContent = locName(currentLocation);
-    document.getElementById('locLogo').textContent = locIcon(currentLocation);
+    paintLogo();
     renderAll();
     syncLocationFromServer(currentLocation);
   });

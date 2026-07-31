@@ -95,6 +95,8 @@ input, select, textarea { font-size: 16px; }
   box-shadow: var(--shadow); cursor: pointer;
 }
 .loc-btn__logo { font-size: 14px; line-height: 1; }
+/* Tint the (green) tree emoji orange for Bancroft. */
+.loc-btn__logo--orange { filter: hue-rotate(-70deg) saturate(1.7) brightness(1.05); }
 .loc-btn__name { max-width: 44vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .loc-btn__chevron {
   font-size: 10px; line-height: 1; color: #fff; background: var(--accent);

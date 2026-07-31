@@ -223,6 +223,19 @@ function renderDayLabel() {
     `${esc(weekday(currentDate))}${isToday ? ' <span class="today-badge">TODAY</span>' : ''}`;
 }
 
+// Freezer readings are negative but the iOS decimal keypad has no minus key,
+// so freezer slots get a ± button that toggles the sign of the value.
+function tempSlot(u, slot, val) {
+  const sign = u.type === 'freezer'
+    ? `<button type="button" class="sign-btn" data-role="sign" aria-label="Toggle minus sign">±</button>`
+    : '';
+  return `<div class="tcard__slot">
+    <span>${slot.toUpperCase()}</span>
+    <input class="${evalTemp(u.type, val)}" data-role="temp" data-unit="${u.id}" data-slot="${slot}" value="${esc(val)}" inputmode="decimal" placeholder="—" />
+    ${sign}
+  </div>`;
+}
+
 function renderTemps() {
   const d = day();
   document.getElementById('tempList').innerHTML = units().map((u) => {
@@ -233,8 +246,8 @@ function renderTemps() {
         <span class="unit-badge unit-badge--${u.type}">${typeLabel(u.type)} · ${typeTarget(u.type)}</span>
       </div>
       <div class="tcard__inputs">
-        <label class="tcard__slot"><span>AM</span><input class="${evalTemp(u.type, r.am)}" data-role="temp" data-unit="${u.id}" data-slot="am" value="${esc(r.am)}" inputmode="decimal" placeholder="—" /></label>
-        <label class="tcard__slot"><span>PM</span><input class="${evalTemp(u.type, r.pm)}" data-role="temp" data-unit="${u.id}" data-slot="pm" value="${esc(r.pm)}" inputmode="decimal" placeholder="—" /></label>
+        ${tempSlot(u, 'am', r.am)}
+        ${tempSlot(u, 'pm', r.pm)}
       </div>
     </div>`;
   }).join('');
@@ -604,15 +617,27 @@ function initLocation() {
   });
 }
 
+const TAB_ORDER = ['temps', 'cleaning', 'hotfood', 'diary'];
+function activateTab(name, dir) {
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('is-active', t.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('is-active', p.id === 'panel-' + name));
+  if (name === 'diary') { renderCheckTimes(); renderStats(); }
+  if (dir) flashActivePanel(dir);
+}
+// Swipe the page content to move between tabs: left → tab on the left,
+// right → tab on the right (no wrap at the ends).
+function changeTab(dir) {
+  const active = document.querySelector('.tab.is-active');
+  const idx = TAB_ORDER.indexOf(active ? active.dataset.tab : 'temps');
+  const next = idx + dir;
+  if (next < 0 || next >= TAB_ORDER.length) return;
+  activateTab(TAB_ORDER[next], dir);
+}
 function initTabs() {
   document.getElementById('tabs').addEventListener('click', (e) => {
     const btn = e.target.closest('.tab');
     if (!btn) return;
-    document.querySelectorAll('.tab').forEach((t) => t.classList.remove('is-active'));
-    document.querySelectorAll('.panel').forEach((p) => p.classList.remove('is-active'));
-    btn.classList.add('is-active');
-    document.getElementById('panel-' + btn.dataset.tab).classList.add('is-active');
-    if (btn.dataset.tab === 'diary') { renderCheckTimes(); renderStats(); }
+    activateTab(btn.dataset.tab);
   });
 }
 
@@ -643,11 +668,13 @@ function initDayNav() {
   initSwipe(nav, { preview: label });
 }
 
-// Horizontal swipe to change day. Swipe left → next day, right → previous day.
-// If a `preview` element is given, it slides with the finger and snaps back,
-// giving live feedback while dragging the date.
-function initSwipe(el, { preview } = {}) {
-  const THRESHOLD = 60;      // px of travel needed to commit a day change
+// Horizontal swipe handler. Calls onSwipe(dir) where dir is -1 for a left
+// swipe and +1 for a right swipe. Defaults to changing the day (swipe left →
+// next day). If a `preview` element is given, it slides with the finger and
+// snaps back, giving live feedback while dragging.
+function initSwipe(el, { preview, onSwipe } = {}) {
+  const act = onSwipe || ((dir) => changeDay(dir < 0 ? 1 : -1));
+  const THRESHOLD = 60;      // px of travel needed to commit
   const MAX_DRAG = 90;       // px the preview is allowed to travel
   let x0 = null, y0 = null, t0 = 0, horizontal = false;
 
@@ -680,7 +707,7 @@ function initSwipe(el, { preview } = {}) {
     x0 = null;
     setPreview(0, true); // snap back
     if (dt < 700 && Math.abs(dx) > THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.8) {
-      changeDay(dx < 0 ? 1 : -1);
+      act(dx < 0 ? -1 : 1);
     }
   }, { passive: true });
 
@@ -699,6 +726,17 @@ function initTemps() {
     if (val !== '') logActivity(d, 'temp', label); else removeActivity(d, 'temp', label);
     commit(d);
     el.className = evalTemp(u ? u.type : 'fridge', val);
+  });
+  // ± button: flip the sign of a freezer reading.
+  document.getElementById('tempList').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-role="sign"]');
+    if (!btn) return;
+    const input = btn.closest('.tcard__slot').querySelector('input[data-role="temp"]');
+    let v = input.value.trim();
+    v = v.startsWith('-') ? v.slice(1) : '-' + v;
+    input.value = v;
+    if (/\d/.test(v)) input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.focus();
   });
 }
 
@@ -799,9 +837,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initHotfood();
   initDiary();
   initFooter();
-  // The date/header is a first-class swipe target (wired in initDayNav with
-  // live drag feedback); swiping the page content changes the day too.
-  initSwipe(document.querySelector('.app-main'));
+  // Swiping the date (header) changes the day; swiping the page content moves
+  // between tabs — left to the tab on the left, right to the tab on the right.
+  initSwipe(document.querySelector('.app-main'), { onSwipe: changeTab });
   renderAll();
 
   // Pull shared data from the server, then push anything saved while offline.

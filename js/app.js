@@ -400,7 +400,8 @@ function monthDaySeries(loc, ym) {
       ['temps', 'cleaning', 'diary'].forEach((k) => { if (!sectionDone(d, k)) missing.push(k); });
       status = missing.length ? 'partial' : 'complete';
     }
-    days.push({ iso, day: i, dow: new Date(iso + 'T00:00:00').getDay(), status, missing, flagged: status !== 'future' && dayHasAlert(d, loc), isToday: iso === today });
+    const who = (d && d.diary && d.diary.name || '').trim();
+    days.push({ iso, day: i, dow: new Date(iso + 'T00:00:00').getDay(), status, missing, who, flagged: status !== 'future' && dayHasAlert(d, loc), isToday: iso === today });
   }
   return days;
 }
@@ -442,8 +443,28 @@ function renderStats() {
       ${tile(s.hotChecks, 'Hot food checks')}
     </div>
     <p class="stats__legend">Purple rings show how consistently checks were completed this month. Red shows days with an out-of-range temperature.</p>
+    ${staffHtml(series)}
     ${calendarHtml(series)}
     ${attentionHtml(series)}`;
+}
+
+// Short tag shown on a calendar day for who signed it (up to 4 chars).
+function whoTag(name) {
+  if (!name) return '';
+  const parts = name.trim().split(/\s+/);
+  const t = parts.length > 1 ? parts.map((p) => p[0]).join('') : name.slice(0, 4);
+  return t.toUpperCase().slice(0, 4);
+}
+
+// "Who worked" — tally of who signed the diary each day this month.
+function staffHtml(series) {
+  const tally = {};
+  series.forEach((s) => { if (s.who) tally[s.who] = (tally[s.who] || 0) + 1; });
+  const staff = Object.entries(tally).map(([name, days]) => ({ name, days })).sort((a, b) => b.days - a.days);
+  if (!staff.length) return '';
+  const chips = staff.map((s) => `<span class="staff-chip"><b>${esc(s.name)}</b>${s.days} day${s.days === 1 ? '' : 's'}</span>`).join('');
+  return `<h4 class="stats__h4">Who worked</h4>
+    <div class="staff-wrap">${chips}</div>`;
 }
 
 // Month heat-calendar: one cell per day, coloured by completion. Tap to open.
@@ -453,14 +474,16 @@ function calendarHtml(series) {
   const heads = dows.map((d) => `<span class="cal__dow">${d}</span>`).join('');
   const pads = Array.from({ length: lead }, () => '<span class="cal__pad"></span>').join('');
   const cells = series.map((s) => {
-    const title = s.status === 'future' ? 'Upcoming'
+    let title = s.status === 'future' ? 'Upcoming'
       : s.status === 'missed' ? 'No record — tap to fill in'
       : s.status === 'partial' ? 'Missing: ' + s.missing.map((k) => SECTION_LABEL[k]).join(', ')
       : 'All checks done';
+    if (s.who) title += ' · ' + s.who;
     const flag = s.flagged ? ' cal__cell--flagged' : '';
     const today = s.isToday ? ' cal__cell--today' : '';
     const tap = s.status === 'future' ? '' : ` data-role="goto-day" data-date="${s.iso}" data-tab="${s.missing[0] || 'temps'}"`;
-    return `<button class="cal__cell cal__cell--${s.status}${flag}${today}"${tap} title="${esc(title)}">${s.day}</button>`;
+    const who = s.who ? `<span class="cal__who">${esc(whoTag(s.who))}</span>` : '';
+    return `<button class="cal__cell cal__cell--${s.status}${flag}${today}"${tap} title="${esc(title)}"><span class="cal__num">${s.day}</span>${who}</button>`;
   }).join('');
   return `<h4 class="stats__h4">Daily completion</h4>
     <div class="cal">${heads}${pads}${cells}</div>

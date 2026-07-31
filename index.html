@@ -14,7 +14,7 @@
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
-  <link rel="stylesheet" href="css/styles.css?v=7" />
+  <link rel="stylesheet" href="css/styles.css?v=8" />
 </head>
 <body>
   <header class="app-header">
@@ -49,10 +49,6 @@
         <p class="panel__hint">Type each temperature. Green = OK, amber = check, red = too warm.</p>
       </div>
       <div id="tempList" class="stack"></div>
-      <div class="checked-by">
-        <label for="tempsBy">Checked by (initials)</label>
-        <input id="tempsBy" maxlength="6" placeholder="e.g. JB" />
-      </div>
     </section>
 
     <!-- CLEANING -->
@@ -94,11 +90,13 @@
         <p class="panel__hint">Any problems or changes, opening/closing checks, and who signed.</p>
       </div>
       <div id="diaryCard"></div>
+      <div id="checkTimes"></div>
       <div id="monthStats" class="stats"></div>
     </section>
   </main>
 
   <footer class="app-footer">
+    <button class="btn btn--save" id="saveBtn">✓ Save</button>
     <button class="btn btn--print" id="printBtn">🖨️ Print this day</button>
     <div class="report-row">
       <input type="month" id="reportMonth" aria-label="Report month" />
@@ -114,6 +112,6 @@
     <button class="tab" data-tab="diary"><span class="tab__icon">📔</span><span class="tab__label">Diary</span></button>
   </nav>
 
-  <script src="js/app.js?v=7"></script>
+  <script src="js/app.js?v=8"></script>
 </body>
 </html>

@@ -93,7 +93,7 @@ function saveLocal() { localStorage.setItem(STORE_KEY, JSON.stringify(STORE)); }
 function blankDay() {
   const temps = {}; units().forEach((u) => { temps[u.id] = { am: '', pm: '' }; });
   const cleaning = {}; TASKS.forEach((t) => { cleaning[t.id] = { done: false }; });
-  return { temps, tempsBy: '', cleaning, hotfood: [], diary: { notes: '', opening: false, closing: false, name: '' } };
+  return { temps, tempsBy: '', cleaning, hotfood: [], diary: { notes: '', opening: false, closing: false, name: '' }, activity: [] };
 }
 
 function getDay(iso) {
@@ -106,7 +106,25 @@ function getDay(iso) {
   if (typeof d.tempsBy !== 'string') d.tempsBy = '';
   d.hotfood = d.hotfood || [];
   d.diary = d.diary || { notes: '', opening: false, closing: false, name: '' };
+  d.activity = d.activity || [];
   return d;
+}
+
+/* Activity log — records the time each check/entry is made so the diary can
+   show when fridges were checked morning and evening. `once` keeps a single
+   (latest) timestamp per distinct action; hot-food adds log every time. */
+function logActivity(d, kind, label, once = true) {
+  d.activity = d.activity || [];
+  const now = Date.now();
+  if (once) {
+    const existing = d.activity.find((a) => a.kind === kind && a.label === label);
+    if (existing) { existing.ts = now; return; }
+  }
+  d.activity.push({ ts: now, kind, label });
+}
+function removeActivity(d, kind, label) {
+  if (!d.activity) return;
+  d.activity = d.activity.filter((a) => !(a.kind === kind && a.label === label));
 }
 
 /* ---------- state ---------- */
@@ -220,7 +238,6 @@ function renderTemps() {
       </div>
     </div>`;
   }).join('');
-  document.getElementById('tempsBy').value = d.tempsBy || '';
 }
 
 function renderCleaning() {
@@ -263,6 +280,27 @@ function renderDiary() {
     </div>
     <div class="diary-sign"><input data-role="diary" data-field="name" placeholder="Name" value="${esc(e.name)}" /></div>
     <p class="diary-foot">Our safe methods were followed and effectively supervised today.</p>
+  </div>`;
+}
+
+function fmtTime(ts) { return new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
+const ACT_ICON = { temp: '🌡️', clean: '🧽', hotfood: '🔥', diary: '📔' };
+
+function renderCheckTimes() {
+  const host = document.getElementById('checkTimes');
+  if (!host) return;
+  const log = (day().activity || []).slice().sort((a, b) => a.ts - b.ts);
+  const rows = log.length
+    ? log.map((a) => `<div class="log-row">
+        <span class="log-row__time">${esc(fmtTime(a.ts))}</span>
+        <span class="log-row__icon">${ACT_ICON[a.kind] || '•'}</span>
+        <span class="log-row__what">${esc(a.label)}</span>
+      </div>`).join('')
+    : '<p class="empty">Nothing checked in yet today. Times appear here as staff fill things in.</p>';
+  host.innerHTML = `<div class="diary-card log-card">
+    <h3>Check times</h3>
+    <p class="diary-q">When each check was done today — handy for confirming morning and evening fridge checks.</p>
+    ${rows}
   </div>`;
 }
 
@@ -313,6 +351,38 @@ function monthMetrics(loc, ym) {
   };
 }
 
+function dayHasAlert(d, loc) {
+  if (!d) return false;
+  return unitsFor(loc).some((u) => {
+    const r = (d.temps || {})[u.id] || {};
+    return ['am', 'pm'].some((s) => r[s] !== '' && !isNaN(Number(r[s])) && evalTemp(u.type, r[s]) === 'alert');
+  });
+}
+
+// Per-day status across the viewed month, for the completion graph and the
+// "needs attention" list. Days after today are 'future'; blank past days are
+// 'missed'; days missing a whole section are 'partial'; otherwise 'complete'.
+const SECTION_LABEL = { temps: 'Temps', cleaning: 'Cleaning', diary: 'Diary' };
+function monthDaySeries(loc, ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const dim = new Date(y, m, 0).getDate();
+  const today = todayISO();
+  const days = [];
+  for (let i = 1; i <= dim; i++) {
+    const iso = `${ym}-${String(i).padStart(2, '0')}`;
+    const d = (STORE[loc] || {})[iso];
+    let status, missing = [];
+    if (iso > today) status = 'future';
+    else if (!dayHasData(d)) { status = 'missed'; missing = ['temps', 'cleaning', 'diary']; }
+    else {
+      ['temps', 'cleaning', 'diary'].forEach((k) => { if (!sectionDone(d, k)) missing.push(k); });
+      status = missing.length ? 'partial' : 'complete';
+    }
+    days.push({ iso, day: i, dow: new Date(iso + 'T00:00:00').getDay(), status, missing, flagged: status !== 'future' && dayHasAlert(d, loc), isToday: iso === today });
+  }
+  return days;
+}
+
 function donutCard(center, pct, color, label) {
   return `<figure class="donut-card">
     <div class="donut" style="--p:${pct};--c:${color}"><div class="donut__hole"><span class="donut__val">${esc(center)}</span></div></div>
@@ -329,6 +399,7 @@ function renderStats() {
   const ym = currentDate.slice(0, 7);
   const monthName = new Date(currentDate + 'T00:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   const s = monthMetrics(currentLocation, ym);
+  const series = monthDaySeries(currentLocation, ym);
 
   const head = `<h3 class="stats__title">Monthly overview</h3>
     <p class="stats__sub">${esc(monthName)} · ${esc(locName(currentLocation))} · ${s.openDays} day${s.openDays === 1 ? '' : 's'} recorded</p>`;
@@ -348,7 +419,70 @@ function renderStats() {
       ${tile(s.alertReadings, 'Out-of-range', s.alertReadings ? 'tile--alert' : '')}
       ${tile(s.hotChecks, 'Hot food checks')}
     </div>
-    <p class="stats__legend">Purple rings show how consistently checks were completed this month. Red shows days with an out-of-range temperature.</p>`;
+    <p class="stats__legend">Purple rings show how consistently checks were completed this month. Red shows days with an out-of-range temperature.</p>
+    ${calendarHtml(series)}
+    ${attentionHtml(series)}`;
+}
+
+// Month heat-calendar: one cell per day, coloured by completion. Tap to open.
+function calendarHtml(series) {
+  const dows = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const lead = series.length ? series[0].dow : 0;
+  const heads = dows.map((d) => `<span class="cal__dow">${d}</span>`).join('');
+  const pads = Array.from({ length: lead }, () => '<span class="cal__pad"></span>').join('');
+  const cells = series.map((s) => {
+    const title = s.status === 'future' ? 'Upcoming'
+      : s.status === 'missed' ? 'No record — tap to fill in'
+      : s.status === 'partial' ? 'Missing: ' + s.missing.map((k) => SECTION_LABEL[k]).join(', ')
+      : 'All checks done';
+    const flag = s.flagged ? ' cal__cell--flagged' : '';
+    const today = s.isToday ? ' cal__cell--today' : '';
+    const tap = s.status === 'future' ? '' : ` data-role="goto-day" data-date="${s.iso}" data-tab="${s.missing[0] || 'temps'}"`;
+    return `<button class="cal__cell cal__cell--${s.status}${flag}${today}"${tap} title="${esc(title)}">${s.day}</button>`;
+  }).join('');
+  return `<h4 class="stats__h4">Daily completion</h4>
+    <div class="cal">${heads}${pads}${cells}</div>
+    <div class="cal-legend">
+      <span><i class="dot dot--complete"></i>Complete</span>
+      <span><i class="dot dot--partial"></i>Partial</span>
+      <span><i class="dot dot--missed"></i>Missed</span>
+      <span><i class="dot dot--flagged"></i>Temp alert</span>
+    </div>`;
+}
+
+// Notifications: past days that are missed or missing a section, with a quick
+// link that jumps straight to that day (and the first section needing input).
+function attentionHtml(series) {
+  const today = todayISO();
+  const items = series.filter((s) => s.iso < today && (s.status === 'missed' || s.status === 'partial'));
+  if (!items.length) {
+    return `<h4 class="stats__h4">Needs attention</h4>
+      <p class="allclear">✓ Nothing missed this month — every past day is complete.</p>`;
+  }
+  const rows = items.map((s) => {
+    const what = s.status === 'missed' ? 'Nothing recorded' : 'Missing ' + s.missing.map((k) => SECTION_LABEL[k]).join(', ');
+    const label = new Date(s.iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    return `<div class="attn-row">
+      <div class="attn-row__main">
+        <div class="attn-row__day">${esc(label)}</div>
+        <div class="attn-row__what">${esc(what)}</div>
+      </div>
+      <button class="btn btn--fix" data-role="goto-day" data-date="${s.iso}" data-tab="${s.missing[0] || 'temps'}">Fix</button>
+    </div>`;
+  }).join('');
+  return `<h4 class="stats__h4">Needs attention <span class="attn-count">${items.length}</span></h4>
+    <div class="attn-list">${rows}</div>`;
+}
+
+function goToDay(iso, tab) {
+  currentDate = iso;
+  const input = document.getElementById('recordDate');
+  if (input) input.value = iso;
+  renderAll();
+  const t = tab || 'temps';
+  document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('is-active', x.dataset.tab === t));
+  document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('is-active', p.id === 'panel-' + t));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function renderAll() {
@@ -357,6 +491,7 @@ function renderAll() {
   renderCleaning();
   renderHotfood();
   renderDiary();
+  renderCheckTimes();
   renderStats();
   updateTabDots();
 }
@@ -477,7 +612,7 @@ function initTabs() {
     document.querySelectorAll('.panel').forEach((p) => p.classList.remove('is-active'));
     btn.classList.add('is-active');
     document.getElementById('panel-' + btn.dataset.tab).classList.add('is-active');
-    if (btn.dataset.tab === 'diary') renderStats();
+    if (btn.dataset.tab === 'diary') { renderCheckTimes(); renderStats(); }
   });
 }
 
@@ -558,15 +693,12 @@ function initTemps() {
     if (el.dataset.role !== 'temp') return;
     const u = units().find((x) => x.id === el.dataset.unit);
     const d = day();
-    d.temps[el.dataset.unit][el.dataset.slot] = el.value.trim();
+    const val = el.value.trim();
+    d.temps[el.dataset.unit][el.dataset.slot] = val;
+    const label = `${u ? u.name : el.dataset.unit} ${el.dataset.slot.toUpperCase()}`;
+    if (val !== '') logActivity(d, 'temp', label); else removeActivity(d, 'temp', label);
     commit(d);
-    el.className = evalTemp(u ? u.type : 'fridge', el.value.trim());
-  });
-  document.getElementById('tempsBy').addEventListener('input', (e) => {
-    const d = day();
-    d.tempsBy = e.target.value.toUpperCase();
-    e.target.value = d.tempsBy;
-    commit(d);
+    el.className = evalTemp(u ? u.type : 'fridge', val);
   });
 }
 
@@ -578,6 +710,8 @@ function initCleaning() {
     const d = day();
     const c = d.cleaning[row.dataset.task];
     c.done = !c.done;
+    const taskName = (TASKS.find((t) => t.id === row.dataset.task) || {}).name || row.dataset.task;
+    if (c.done) logActivity(d, 'clean', taskName); else removeActivity(d, 'clean', taskName);
     commit(d);
     row.classList.toggle('done', c.done);
     row.querySelector('.crow__box').textContent = c.done ? '✓' : '';
@@ -589,7 +723,9 @@ function initHotfood() {
     e.preventDefault();
     const f = e.target;
     const d = day();
-    d.hotfood.push({ id: uid(), item: f.item.value.trim(), stage: f.stage.value, temp: f.temp.value, by: f.by.value.trim().toUpperCase() });
+    const item = f.item.value.trim();
+    d.hotfood.push({ id: uid(), item, stage: f.stage.value, temp: f.temp.value, by: f.by.value.trim().toUpperCase() });
+    logActivity(d, 'hotfood', item, false);
     commit(d);
     f.reset();
     renderHotfood();
@@ -606,12 +742,41 @@ function initHotfood() {
 
 function initDiary() {
   const card = document.getElementById('diaryCard');
-  const write = (el) => { const d = day(); d.diary[el.dataset.field] = el.type === 'checkbox' ? el.checked : el.value; commit(d); };
+  const write = (el) => {
+    const d = day();
+    const field = el.dataset.field;
+    d.diary[field] = el.type === 'checkbox' ? el.checked : el.value;
+    if (field === 'opening') { d.diary[field] ? logActivity(d, 'diary', 'Opening checks') : removeActivity(d, 'diary', 'Opening checks'); }
+    if (field === 'closing') { d.diary[field] ? logActivity(d, 'diary', 'Closing checks') : removeActivity(d, 'diary', 'Closing checks'); }
+    if (field === 'name') { d.diary[field].trim() ? logActivity(d, 'diary', 'Signed') : removeActivity(d, 'diary', 'Signed'); }
+    commit(d);
+    renderCheckTimes();
+    renderStats();
+  };
   card.addEventListener('input', (e) => { if (e.target.dataset.role === 'diary') write(e.target); });
   card.addEventListener('change', (e) => { if (e.target.dataset.role === 'diary' && e.target.type === 'checkbox') write(e.target); });
+
+  // Quick-links from the monthly dashboard (calendar cells + "Fix" buttons).
+  const stats = document.getElementById('monthStats');
+  if (stats) stats.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-role="goto-day"]');
+    if (!btn) return;
+    goToDay(btn.dataset.date, btn.dataset.tab);
+  });
 }
 
 function initFooter() {
+  document.getElementById('saveBtn').addEventListener('click', () => {
+    const d = day();                       // make sure the current day is in the store
+    commit(d);                             // persist locally + tab dots + queue sync
+    pushDay(currentLocation, currentDate); // push to the cloud right away
+    flushPending();                        // and anything saved earlier while offline
+    const btn = document.getElementById('saveBtn');
+    btn.classList.add('is-saved');
+    btn.textContent = '✓ Saved';
+    clearTimeout(btn._t);
+    btn._t = setTimeout(() => { btn.classList.remove('is-saved'); btn.textContent = '✓ Save'; }, 1600);
+  });
   document.getElementById('printBtn').addEventListener('click', () => {
     document.getElementById('printHeader').innerHTML =
       `<h1>${esc(locName(currentLocation))} — Daily Record</h1><p>${esc(longDate(currentDate))}</p>`;

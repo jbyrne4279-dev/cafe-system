@@ -273,6 +273,52 @@ input, select, textarea { font-size: 16px; }
   .tile-row { grid-template-columns: repeat(4, 1fr); }
 }
 
+/* Monthly dashboard extras: heat-calendar, notifications, activity log */
+.stats__h4 { font-size: 15px; font-weight: 700; margin: 24px 0 10px; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; }
+
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.cal__dow { text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); padding-bottom: 2px; }
+.cal__pad { aspect-ratio: 1; }
+.cal__cell {
+  aspect-ratio: 1; border: none; border-radius: 9px; font-size: 12px; font-weight: 700;
+  color: var(--ink); cursor: pointer; display: grid; place-items: center; background: var(--fill);
+}
+.cal__cell--complete { background: var(--ok-bg); color: var(--ok); }
+.cal__cell--partial { background: var(--watch-bg); color: var(--watch); }
+.cal__cell--missed { background: var(--bad-bg); color: var(--bad); }
+.cal__cell--future { background: transparent; color: var(--faint); cursor: default; box-shadow: inset 0 0 0 1px var(--line); }
+.cal__cell--flagged { box-shadow: inset 0 0 0 2px var(--bad); }
+.cal__cell--today { outline: 2px solid var(--today); outline-offset: 1px; }
+.cal__cell:not(.cal__cell--future):active { transform: scale(.92); }
+
+.cal-legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 2px 0; font-size: 12px; color: var(--muted); }
+.cal-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.dot--complete { background: var(--ok); }
+.dot--partial { background: var(--watch); }
+.dot--missed { background: var(--bad); }
+.dot--flagged { background: transparent; box-shadow: inset 0 0 0 2px var(--bad); }
+
+.attn-count { background: var(--bad); color: #fff; font-size: 12px; font-weight: 800; border-radius: 999px; padding: 1px 8px; }
+.allclear { color: var(--ok); font-size: 14px; margin: 0; padding: 12px; background: var(--ok-bg); border-radius: var(--radius-sm); }
+.attn-list { display: flex; flex-direction: column; gap: 8px; }
+.attn-row {
+  display: flex; align-items: center; gap: 10px; background: var(--card); border: 0.5px solid var(--line);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow); padding: 10px 12px;
+}
+.attn-row__main { flex: 1; min-width: 0; }
+.attn-row__day { font-size: 15px; font-weight: 600; }
+.attn-row__what { font-size: 13px; color: var(--muted); }
+.btn--fix { background: var(--accent); color: #fff; padding: 9px 18px; font-size: 15px; flex: none; }
+.btn--fix:active { background: var(--accent-press); }
+
+.log-card { margin-top: 14px; }
+.log-row { display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 10px; padding: 7px 2px; border-bottom: 0.5px solid var(--line); }
+.log-row:last-child { border-bottom: none; }
+.log-row__time { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 15px; color: var(--accent); }
+.log-row__icon { font-size: 15px; }
+.log-row__what { font-size: 14px; color: var(--ink); }
+
 /* ---------- Buttons ---------- */
 .btn { border: none; border-radius: var(--radius-sm); padding: 13px 18px; font-size: 16px; font-weight: 600; cursor: pointer; transition: transform .1s, background .15s; letter-spacing: -0.01em; }
 .btn:active { transform: scale(.97); }
@@ -280,6 +326,9 @@ input, select, textarea { font-size: 16px; }
 .btn--add:active { background: var(--accent-press); }
 .btn--print { background: var(--accent); color: #fff; width: 100%; padding: 15px; font-size: 17px; }
 .btn--print:active { background: var(--accent-press); }
+.btn--save { background: #34c759; color: #fff; width: 100%; padding: 15px; font-size: 17px; margin-bottom: 10px; }
+.btn--save:active { background: #28a745; }
+.btn--save.is-saved { background: #28a745; }
 
 .empty { color: var(--muted); font-size: 14px; padding: 12px; text-align: center; }
 .row-del { background: none; border: none; color: var(--faint); cursor: pointer; font-size: 22px; line-height: 1; padding: 4px 8px; flex: none; }

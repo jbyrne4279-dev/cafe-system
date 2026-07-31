@@ -469,24 +469,56 @@ function initDayNav() {
   input.addEventListener('change', () => { currentDate = input.value || todayISO(); renderAll(); });
   document.getElementById('prevDay').addEventListener('click', () => changeDay(-1));
   document.getElementById('nextDay').addEventListener('click', () => changeDay(1));
+
+  // Make the date itself swipeable, with the label tracking the finger so it's
+  // clear the day is moving. Swipe left → next day, swipe right → previous day.
+  const nav = document.querySelector('.day-nav');
+  const label = document.getElementById('dayLabel')?.closest('.day-nav__label') || nav;
+  initSwipe(nav, { preview: label });
 }
 
-// Swipe left → next day, swipe right → previous day.
-function initSwipe(el) {
-  let x0 = null, y0 = null, t0 = 0;
+// Horizontal swipe to change day. Swipe left → next day, right → previous day.
+// If a `preview` element is given, it slides with the finger and snaps back,
+// giving live feedback while dragging the date.
+function initSwipe(el, { preview } = {}) {
+  const THRESHOLD = 60;      // px of travel needed to commit a day change
+  const MAX_DRAG = 90;       // px the preview is allowed to travel
+  let x0 = null, y0 = null, t0 = 0, horizontal = false;
+
+  const setPreview = (dx, animate) => {
+    if (!preview) return;
+    preview.style.transition = animate ? 'transform .18s ease, opacity .18s ease' : 'none';
+    const clamped = Math.max(-MAX_DRAG, Math.min(MAX_DRAG, dx));
+    preview.style.transform = dx ? `translateX(${clamped}px)` : '';
+    preview.style.opacity = dx ? String(1 - Math.min(0.5, Math.abs(clamped) / (MAX_DRAG * 2))) : '';
+  };
+
   el.addEventListener('touchstart', (e) => {
     if (e.touches.length > 1) { x0 = null; return; }
-    const t = e.changedTouches[0]; x0 = t.clientX; y0 = t.clientY; t0 = Date.now();
+    const t = e.changedTouches[0];
+    x0 = t.clientX; y0 = t.clientY; t0 = Date.now(); horizontal = false;
   }, { passive: true });
+
+  el.addEventListener('touchmove', (e) => {
+    if (x0 == null) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - x0, dy = t.clientY - y0;
+    if (!horizontal && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) horizontal = true;
+    if (horizontal) setPreview(dx, false);
+  }, { passive: true });
+
   el.addEventListener('touchend', (e) => {
     if (x0 == null) return;
     const t = e.changedTouches[0];
     const dx = t.clientX - x0, dy = t.clientY - y0, dt = Date.now() - t0;
     x0 = null;
-    if (dt < 700 && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.8) {
+    setPreview(0, true); // snap back
+    if (dt < 700 && Math.abs(dx) > THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.8) {
       changeDay(dx < 0 ? 1 : -1);
     }
   }, { passive: true });
+
+  el.addEventListener('touchcancel', () => { x0 = null; setPreview(0, true); }, { passive: true });
 }
 
 function initTemps() {
@@ -571,8 +603,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initHotfood();
   initDiary();
   initFooter();
+  // The date/header is a first-class swipe target (wired in initDayNav with
+  // live drag feedback); swiping the page content changes the day too.
   initSwipe(document.querySelector('.app-main'));
-  initSwipe(document.querySelector('.app-header'));
   renderAll();
 
   // Pull shared data from the server, then push anything saved while offline.

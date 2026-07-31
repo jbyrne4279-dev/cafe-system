@@ -104,14 +104,24 @@ input, select, textarea { font-size: 16px; }
   border: none; -webkit-appearance: none; appearance: none; font-size: 16px; cursor: pointer;
 }
 
-/* Day navigation */
-.day-nav { display: flex; align-items: center; gap: 10px; }
+/* Day navigation — centered across the header, date dead-center with the
+   arrows at either side. The date is swipeable (see initDayNav). */
+.day-nav {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; max-width: 340px;
+}
 .day-nav__btn {
   width: 42px; height: 42px; border: none; background: var(--fill); border-radius: 50%;
   font-size: 24px; line-height: 1; color: var(--accent); cursor: pointer; transition: transform .1s, background .15s;
+  flex: 0 0 auto;
 }
 .day-nav__btn:active { transform: scale(.9); background: var(--line); }
-.day-nav__label { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 128px; }
+.day-nav__label {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  min-width: 128px; flex: 1 1 auto;
+  touch-action: pan-y;      /* let vertical scroll pass, capture horizontal drags */
+  cursor: grab; will-change: transform;
+}
 .day-nav__weekday { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
 .day-nav__label input { padding: 6px 10px; border: none; background: var(--fill); border-radius: 9px; font-size: 14px; color: var(--ink); text-align: center; }
 .today-badge {

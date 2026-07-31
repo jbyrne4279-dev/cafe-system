@@ -389,10 +389,12 @@ input, select, textarea { font-size: 16px; }
 .tab.is-active { color: var(--ok); }
 .tab.is-active .tab__icon { filter: none; }
 .tab.is-active .tab__label { font-weight: 800; }
-/* soft green highlight pill behind the current tab */
+/* green highlight pill behind the current tab */
 .tab.is-active::before {
-  content: ""; position: absolute; inset: 6px 10px; border-radius: 12px;
-  background: var(--ok-bg); z-index: 0;
+  content: ""; position: absolute; inset: 5px 8px; border-radius: 12px;
+  background: color-mix(in srgb, var(--ok) 22%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ok) 45%, transparent);
+  z-index: 0;
 }
 /* electric-green "still to fill" dot */
 .tab.has-todo::after {

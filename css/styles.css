@@ -79,26 +79,27 @@ input, select, textarea { font-size: 16px; }
   padding-top: var(--sat); padding-left: var(--sal); padding-right: var(--sar);
 }
 .app-header__inner {
-  max-width: 900px; margin: 0 auto; padding: 12px 16px;
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  max-width: 900px; margin: 0 auto; padding: 8px 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
 }
-.brand { display: flex; align-items: center; gap: 12px; }
-.brand__logo {
-  font-size: 26px; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px;
-  background: linear-gradient(160deg, var(--accent), color-mix(in srgb, var(--accent) 65%, #000));
-  box-shadow: var(--shadow);
-}
-.brand__text { display: flex; flex-direction: column; }
-.brand__tag { margin: 1px 0 0; font-size: 13px; color: var(--muted); }
 
-/* Location dropdown (acts as the title). A visible label + chevron with the
-   native <select> laid invisibly on top, so it hugs the selected name. */
-.loc-wrap { position: relative; display: inline-flex; align-items: center; gap: 6px; }
-.loc-current {
-  font-size: 20px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink);
-  max-width: 62vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+/* Compact location picker, pinned to the top-right of the header. It's a clear
+   pill button with a chevron; the native <select> sits invisibly on top so a
+   tap opens the OS location list. */
+.loc-picker { position: relative; align-self: flex-end; }
+.loc-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px 6px 8px; border: none; border-radius: 999px;
+  background: var(--fill); color: var(--ink);
+  font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
+  box-shadow: var(--shadow); cursor: pointer;
 }
-.loc-chevron { font-size: 13px; color: var(--accent); }
+.loc-btn__logo { font-size: 14px; line-height: 1; }
+.loc-btn__name { max-width: 44vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.loc-btn__chevron {
+  font-size: 10px; line-height: 1; color: #fff; background: var(--accent);
+  width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center;
+}
 .loc-select {
   position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0;
   border: none; -webkit-appearance: none; appearance: none; font-size: 16px; cursor: pointer;
@@ -350,7 +351,5 @@ input, select, textarea { font-size: 16px; }
 }
 
 @media (max-width: 560px) {
-  .brand__tag { display: none; }
-  .loc-select { font-size: 17px; max-width: 58vw; }
   .tcard__slot input { width: 62px; padding: 12px 4px; }
 }

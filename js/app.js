@@ -223,16 +223,23 @@ function renderDayLabel() {
     `${esc(weekday(currentDate))}${isToday ? ' <span class="today-badge">TODAY</span>' : ''}`;
 }
 
-// Freezer readings are negative but the iOS decimal keypad has no minus key,
-// so freezer slots get a ± button that toggles the sign of the value.
+// Freezer readings are assumed negative (the iOS keypad has no minus key), so
+// typing "18" stores "-18". The sign button shows the current sign and can be
+// flipped to "+" for the rare above-zero fault reading; the sign is held in the
+// button's state so multi-digit entry works the same for either sign.
+function signOf(val) { return String(val).trim().startsWith('-') || val === '' ? '-' : '+'; }
 function tempSlot(u, slot, val) {
-  const sign = u.type === 'freezer'
-    ? `<button type="button" class="sign-btn" data-role="sign" aria-label="Toggle minus sign">±</button>`
-    : '';
+  if (u.type === 'freezer') {
+    const sign = signOf(val);
+    return `<div class="tcard__slot">
+      <span>${slot.toUpperCase()}</span>
+      <input class="${evalTemp(u.type, val)}" data-role="temp" data-signed="1" data-unit="${u.id}" data-slot="${slot}" value="${esc(val)}" inputmode="decimal" placeholder="—" />
+      <button type="button" class="sign-btn ${sign === '+' ? 'sign-btn--plus' : ''}" data-role="sign" data-sign="${sign}" aria-label="Switch between minus and plus">${sign === '-' ? '−' : '+'}</button>
+    </div>`;
+  }
   return `<div class="tcard__slot">
     <span>${slot.toUpperCase()}</span>
     <input class="${evalTemp(u.type, val)}" data-role="temp" data-unit="${u.id}" data-slot="${slot}" value="${esc(val)}" inputmode="decimal" placeholder="—" />
-    ${sign}
   </div>`;
 }
 
@@ -297,22 +304,24 @@ function renderDiary() {
 }
 
 function fmtTime(ts) { return new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
-const ACT_ICON = { temp: '🌡️', clean: '🧽', hotfood: '🔥', diary: '📔' };
 
 function renderCheckTimes() {
   const host = document.getElementById('checkTimes');
   if (!host) return;
   const log = (day().activity || []).slice().sort((a, b) => a.ts - b.ts);
-  const rows = log.length
-    ? log.map((a) => `<div class="log-row">
-        <span class="log-row__time">${esc(fmtTime(a.ts))}</span>
-        <span class="log-row__icon">${ACT_ICON[a.kind] || '•'}</span>
-        <span class="log-row__what">${esc(a.label)}</span>
-      </div>`).join('')
-    : '<p class="empty">Nothing checked in yet today. Times appear here as staff fill things in.</p>';
+  if (!log.length) {
+    host.innerHTML = `<div class="diary-card log-card">
+      <h3>Check times</h3>
+      <p class="empty">Times appear here as staff fill things in.</p>
+    </div>`;
+    return;
+  }
+  const rows = log.map((a) => `<div class="log-row">
+      <span class="log-row__what">${esc(a.label)}</span>
+      <span class="log-row__time">${esc(fmtTime(a.ts))}</span>
+    </div>`).join('');
   host.innerHTML = `<div class="diary-card log-card">
     <h3>Check times</h3>
-    <p class="diary-q">When each check was done today — handy for confirming morning and evening fridge checks.</p>
     ${rows}
   </div>`;
 }
@@ -720,22 +729,32 @@ function initTemps() {
     if (el.dataset.role !== 'temp') return;
     const u = units().find((x) => x.id === el.dataset.unit);
     const d = day();
-    const val = el.value.trim();
+    let val = el.value.trim();
+    if (el.dataset.signed) {
+      // Combine the typed magnitude with the sign held by the ± button.
+      const signBtn = el.closest('.tcard__slot').querySelector('.sign-btn');
+      const sign = signBtn ? signBtn.dataset.sign : '-';
+      const mag = val.replace(/[^0-9.]/g, '');
+      val = mag === '' ? '' : (sign === '-' ? '-' : '') + mag;
+      if (el.value !== val) el.value = val;
+    }
     d.temps[el.dataset.unit][el.dataset.slot] = val;
     const label = `${u ? u.name : el.dataset.unit} ${el.dataset.slot.toUpperCase()}`;
     if (val !== '') logActivity(d, 'temp', label); else removeActivity(d, 'temp', label);
     commit(d);
     el.className = evalTemp(u ? u.type : 'fridge', val);
   });
-  // ± button: flip the sign of a freezer reading.
+  // Sign button: flip between − (default) and + for a freezer reading.
   document.getElementById('tempList').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-role="sign"]');
     if (!btn) return;
+    const sign = btn.dataset.sign === '-' ? '+' : '-';
+    btn.dataset.sign = sign;
+    btn.textContent = sign === '-' ? '−' : '+';
+    btn.classList.toggle('sign-btn--plus', sign === '+');
+    // Re-run the input handler so the stored value picks up the new sign.
     const input = btn.closest('.tcard__slot').querySelector('input[data-role="temp"]');
-    let v = input.value.trim();
-    v = v.startsWith('-') ? v.slice(1) : '-' + v;
-    input.value = v;
-    if (/\d/.test(v)) input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('input', { bubbles: true }));
     input.focus();
   });
 }

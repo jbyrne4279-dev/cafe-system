@@ -88,19 +88,20 @@ input, select, textarea { font-size: 16px; }
    tap opens the OS location list. */
 .loc-picker { position: relative; align-self: flex-start; }
 .loc-btn {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 7px 8px 7px 12px; border: none; border-radius: 999px;
-  background: var(--fill); color: var(--ink);
-  font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
-  box-shadow: var(--shadow); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 9px 11px 9px 14px; border: none; border-radius: 999px;
+  background: var(--accent); color: #fff;
+  font-size: 14px; font-weight: 700; letter-spacing: -0.01em;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 45%, transparent); cursor: pointer;
 }
-.loc-btn__logo { font-size: 14px; line-height: 1; }
+.loc-btn:active { background: var(--accent-press); }
+.loc-btn__logo { font-size: 15px; line-height: 1; }
 /* Tint the (green) tree emoji orange for Bancroft. */
 .loc-btn__logo--orange { filter: hue-rotate(-70deg) saturate(1.7) brightness(1.05); }
-.loc-btn__name { max-width: 44vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.loc-btn__name { max-width: 52vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .loc-btn__chevron {
-  font-size: 10px; line-height: 1; color: #fff; background: var(--accent);
-  width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 10px; line-height: 1; color: #fff; background: rgba(255, 255, 255, .28);
+  width: 17px; height: 17px; border-radius: 50%; display: grid; place-items: center;
 }
 .loc-select {
   position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0;
@@ -187,6 +188,7 @@ input, select, textarea { font-size: 16px; }
   font-size: 15px; font-weight: 800; line-height: 1; cursor: pointer;
 }
 .sign-btn:active { transform: scale(.94); }
+.sign-btn--plus { background: var(--bad-bg); color: var(--bad); }
 
 .checked-by {
   margin-top: 14px; background: var(--card); border: 0.5px solid var(--line); border-radius: var(--radius);
@@ -324,11 +326,10 @@ input, select, textarea { font-size: 16px; }
 .btn--fix:active { background: var(--accent-press); }
 
 .log-card { margin-top: 14px; }
-.log-row { display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 10px; padding: 7px 2px; border-bottom: 0.5px solid var(--line); }
-.log-row:last-child { border-bottom: none; }
-.log-row__time { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 15px; color: var(--accent); }
-.log-row__icon { font-size: 15px; }
-.log-row__what { font-size: 14px; color: var(--ink); }
+.log-row { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; padding: 10px 2px; }
+.log-row + .log-row { border-top: 0.5px solid var(--line); }
+.log-row__what { font-size: 15px; color: var(--ink); }
+.log-row__time { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 15px; color: var(--accent); white-space: nowrap; }
 
 /* ---------- Buttons ---------- */
 .btn { border: none; border-radius: var(--radius-sm); padding: 13px 18px; font-size: 16px; font-weight: 600; cursor: pointer; transition: transform .1s, background .15s; letter-spacing: -0.01em; }

@@ -12,20 +12,34 @@ const LOC_KEY = 'nhmc-cafe-location';
 const PENDING_KEY = 'nhmc-cafe-pending';    // ["location|date", ...]
 
 const LOCATIONS = [
-  { id: 'museum', name: 'North Herts Museum Café' },
-  { id: 'howard-park', name: 'Howard Park' },
-  { id: 'bancroft', name: 'Bancroft' },
+  { id: 'museum', name: 'North Herts Museum Café', icon: '☕' },
+  { id: 'howard-park', name: 'Howard Park', icon: '🌳' },
+  { id: 'bancroft', name: 'Bancroft', icon: '🌳' },
 ];
 
-const UNITS = [
-  { id: 'double-fridge', name: 'Double Fridge', type: 'fridge' },
-  { id: 'double-freezer', name: 'Double Freezer', type: 'freezer' },
-  { id: 'storage-freezer', name: 'Storage Freezer', type: 'freezer' },
-  { id: 'display-cabinet', name: 'Display Cabinet', type: 'fridge' },
-  { id: 'milk-fridge', name: 'Milk Fridge', type: 'fridge' },
-  { id: 'drinks-fridge', name: 'Drinks Fridge', type: 'fridge' },
-  { id: 'ice-cream-freezer', name: 'Ice cream Freezer', type: 'freezer' },
-];
+// Fridge/freezer units differ per café. Each location lists its own; anything
+// without an entry falls back to DEFAULT_UNITS.
+const UNITS_BY_LOCATION = {
+  museum: [
+    { id: 'double-fridge', name: 'Double Fridge', type: 'fridge' },
+    { id: 'double-freezer', name: 'Double Freezer', type: 'freezer' },
+    { id: 'storage-freezer', name: 'Storage Freezer', type: 'freezer' },
+    { id: 'display-cabinet', name: 'Display Cabinet', type: 'fridge' },
+    { id: 'milk-fridge', name: 'Milk Fridge', type: 'fridge' },
+    { id: 'drinks-fridge', name: 'Drinks Fridge', type: 'fridge' },
+    { id: 'ice-cream-freezer', name: 'Ice cream Freezer', type: 'freezer' },
+  ],
+  'howard-park': [
+    { id: 'gelato-freezer', name: 'Gelato Freezer', type: 'freezer' },
+    { id: 'mini-freezer', name: 'Mini Freezer', type: 'freezer' },
+    { id: 'fridge', name: 'Fridge', type: 'fridge' },
+    { id: 'drinks-fridge', name: 'Drinks Fridge', type: 'fridge' },
+    { id: 'freezer', name: 'Freezer', type: 'freezer' },
+  ],
+};
+const DEFAULT_UNITS = UNITS_BY_LOCATION.museum;
+function unitsFor(loc) { return UNITS_BY_LOCATION[loc] || DEFAULT_UNITS; }
+function units() { return unitsFor(currentLocation); }
 
 const TASKS = [
   { id: 'walls-doors-canopy', name: 'Walls, Doors and Canopy' },
@@ -54,6 +68,7 @@ function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 function longDate(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
 function weekday(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long' }); }
 function locName(id) { return (LOCATIONS.find((l) => l.id === id) || {}).name || id; }
+function locIcon(id) { return (LOCATIONS.find((l) => l.id === id) || {}).icon || '☕'; }
 
 /* ---------- storage ---------- */
 
@@ -62,7 +77,7 @@ function loadLocal() { try { STORE = JSON.parse(localStorage.getItem(STORE_KEY))
 function saveLocal() { localStorage.setItem(STORE_KEY, JSON.stringify(STORE)); }
 
 function blankDay() {
-  const temps = {}; UNITS.forEach((u) => { temps[u.id] = { am: '', pm: '' }; });
+  const temps = {}; units().forEach((u) => { temps[u.id] = { am: '', pm: '' }; });
   const cleaning = {}; TASKS.forEach((t) => { cleaning[t.id] = { done: false }; });
   return { temps, tempsBy: '', cleaning, hotfood: [], diary: { notes: '', opening: false, closing: false, name: '' } };
 }
@@ -72,7 +87,7 @@ function getDay(iso) {
   const loc = STORE[currentLocation];
   if (!loc[iso]) loc[iso] = blankDay();
   const d = loc[iso];
-  d.temps = d.temps || {}; UNITS.forEach((u) => { if (!d.temps[u.id]) d.temps[u.id] = { am: '', pm: '' }; });
+  d.temps = d.temps || {}; units().forEach((u) => { if (!d.temps[u.id]) d.temps[u.id] = { am: '', pm: '' }; });
   d.cleaning = d.cleaning || {}; TASKS.forEach((t) => { if (!d.cleaning[t.id]) d.cleaning[t.id] = { done: false }; });
   if (typeof d.tempsBy !== 'string') d.tempsBy = '';
   d.hotfood = d.hotfood || [];
@@ -165,6 +180,7 @@ function renderLocations() {
   const sel = document.getElementById('locationSelect');
   sel.innerHTML = LOCATIONS.map((l) => `<option value="${l.id}" ${l.id === currentLocation ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
   document.getElementById('locCurrent').textContent = locName(currentLocation);
+  document.getElementById('locLogo').textContent = locIcon(currentLocation);
 }
 
 function renderDayLabel() {
@@ -177,7 +193,7 @@ function renderDayLabel() {
 
 function renderTemps() {
   const d = day();
-  document.getElementById('tempList').innerHTML = UNITS.map((u) => {
+  document.getElementById('tempList').innerHTML = units().map((u) => {
     const r = d.temps[u.id];
     return `<div class="tcard">
       <div class="tcard__head">
@@ -260,7 +276,7 @@ function monthMetrics(loc, ym) {
     if (!dayHasData(d)) continue;
     openDays++;
     let dayFlagged = false;
-    UNITS.forEach((u) => {
+    unitsFor(loc).forEach((u) => {
       const r = d.temps[u.id] || { am: '', pm: '' };
       ['am', 'pm'].forEach((s) => {
         expected++;
@@ -343,8 +359,8 @@ function dayHasData(d) {
   return !!(di.notes || di.name || di.opening || di.closing);
 }
 
-function reportDayBlock(iso, d) {
-  const tempRows = UNITS.map((u) => {
+function reportDayBlock(iso, d, unitList) {
+  const tempRows = unitList.map((u) => {
     const r = d.temps[u.id] || { am: '', pm: '' };
     const flag = (v) => (evalTemp(u.type, v) === 'alert' ? ' ⚠' : '');
     return `<tr><td>${esc(u.name)}</td><td>${esc(r.am)}${r.am !== '' ? '°C' : ''}${flag(r.am)}</td><td>${esc(r.pm)}${r.pm !== '' ? '°C' : ''}${flag(r.pm)}</td></tr>`;
@@ -380,7 +396,7 @@ function buildMonthlyReport(loc, ym) {
     const d = (STORE[loc] || {})[iso];
     if (!dayHasData(d)) continue;
     open++;
-    blocks += reportDayBlock(iso, d);
+    blocks += reportDayBlock(iso, d, unitsFor(loc));
   }
   if (!open) blocks = '<p class="muted">No records were found for this month.</p>';
 
@@ -433,6 +449,7 @@ function initLocation() {
     currentLocation = sel.value;
     localStorage.setItem(LOC_KEY, currentLocation);
     document.getElementById('locCurrent').textContent = locName(currentLocation);
+    document.getElementById('locLogo').textContent = locIcon(currentLocation);
     renderAll();
     syncLocationFromServer(currentLocation);
   });
@@ -525,7 +542,7 @@ function initTemps() {
   document.getElementById('tempList').addEventListener('input', (e) => {
     const el = e.target;
     if (el.dataset.role !== 'temp') return;
-    const u = UNITS.find((x) => x.id === el.dataset.unit);
+    const u = units().find((x) => x.id === el.dataset.unit);
     const d = day();
     d.temps[el.dataset.unit][el.dataset.slot] = el.value.trim();
     commit(d);

@@ -385,8 +385,15 @@ input, select, textarea { font-size: 16px; }
 .tab:active { transform: scale(.9); }
 .tab__icon { font-size: 23px; line-height: 1; filter: grayscale(.35); }
 .tab__label { font-size: 11px; font-weight: 600; }
-.tab.is-active { color: var(--accent); }
+.tab__icon, .tab__label { position: relative; z-index: 1; }
+.tab.is-active { color: var(--ok); }
 .tab.is-active .tab__icon { filter: none; }
+.tab.is-active .tab__label { font-weight: 800; }
+/* soft green highlight pill behind the current tab */
+.tab.is-active::before {
+  content: ""; position: absolute; inset: 6px 10px; border-radius: 12px;
+  background: var(--ok-bg); z-index: 0;
+}
 /* electric-green "still to fill" dot */
 .tab.has-todo::after {
   content: ""; position: absolute; top: 8px; right: calc(50% - 20px);

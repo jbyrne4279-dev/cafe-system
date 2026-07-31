@@ -108,6 +108,9 @@ input, select, textarea { font-size: 16px; }
   border: none; -webkit-appearance: none; appearance: none; font-size: 16px; cursor: pointer;
 }
 
+/* Divider between the location pill and the date */
+.header-rule { width: 100%; height: 0; border: none; border-top: 0.5px solid var(--line); margin: 4px 0 2px; }
+
 /* Day navigation — centered across the header, date dead-center with the
    arrows at either side. The date is swipeable (see initDayNav). */
 .day-nav {
@@ -129,16 +132,16 @@ input, select, textarea { font-size: 16px; }
 }
 .day-nav__weekday { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 7px; color: var(--accent); }
 .day-nav__label input {
-  padding: 6px 12px; border: none; border-radius: 9px; font-size: 14px; font-weight: 600; text-align: center;
-  background: color-mix(in srgb, var(--accent) 14%, var(--card));
-  color: var(--accent);
+  padding: 6px 12px; border: none; border-radius: 9px; font-size: 14px; font-weight: 700; text-align: center;
+  background: var(--ok-bg);
+  color: var(--ok);
 }
 .today-badge {
   font-size: 10px; font-weight: 800; letter-spacing: .06em; color: var(--today-ink);
   background: var(--today); padding: 2px 7px; border-radius: 999px;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--today) 35%, transparent);
 }
-.day-nav.is-today .day-nav__label input { box-shadow: 0 0 0 2px var(--accent); }
+.day-nav.is-today .day-nav__label input { box-shadow: 0 0 0 2px var(--today); }
 
 /* ---------- Main ---------- */
 .app-main {

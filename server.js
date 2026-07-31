@@ -91,12 +91,19 @@ const server = http.createServer((req, res) => {
     if (err) {
       return fs.readFile(path.join(ROOT, 'index.html'), (e2, home) => {
         if (e2) { res.writeHead(404); return res.end('Not found'); }
-        res.writeHead(200, { 'Content-Type': TYPES['.html'] });
+        res.writeHead(200, { 'Content-Type': TYPES['.html'], 'Cache-Control': 'no-cache' });
         res.end(home);
       });
     }
-    const type = TYPES[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': type });
+    const ext = path.extname(filePath).toLowerCase();
+    const type = TYPES[ext] || 'application/octet-stream';
+    // The HTML, CSS and JS change on every deploy, so make browsers (and the
+    // iOS home-screen web app) revalidate them instead of serving a stale copy.
+    // Icons/images are effectively immutable, so let them cache for a day.
+    const cache = ['.html', '.css', '.js', '.webmanifest'].includes(ext)
+      ? 'no-cache'
+      : 'public, max-age=86400';
+    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': cache });
     res.end(data);
   });
 });

@@ -858,7 +858,7 @@ function initHotfood() {
     const f = e.target;
     const d = day();
     const item = f.item.value.trim();
-    d.hotfood.push({ id: uid(), item, stage: f.stage.value, temp: f.temp.value, by: f.by.value.trim().toUpperCase() });
+    d.hotfood.push({ id: uid(), item, stage: f.stage.value, temp: f.temp.value, by: '' });
     logActivity(d, 'hotfood', item, false);
     commit(d);
     f.reset();

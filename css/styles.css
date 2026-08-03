@@ -108,26 +108,29 @@ input, select, textarea { font-size: 16px; }
 /* Divider between the location pill and the date */
 .header-rule { width: 100%; height: 0; border: none; border-top: 0.5px solid var(--line); margin: 4px 0 2px; }
 
-/* Day navigation — centered across the header, date dead-center with the
+/* Day navigation — a standout purple panel with the date dead-centre and the
    arrows at either side. The date is swipeable (see initDayNav). */
 .day-nav {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  width: 100%; max-width: 340px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; max-width: 360px;
+  background: var(--accent);
+  padding: 8px 10px; border-radius: 16px;
+  box-shadow: 0 3px 14px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 .day-nav__btn {
-  width: 42px; height: 42px; border: none; border-radius: 50%;
-  background: color-mix(in srgb, var(--accent) 12%, var(--card));
-  font-size: 24px; line-height: 1; color: var(--accent); cursor: pointer; transition: transform .1s, background .15s;
+  width: 40px; height: 40px; border: none; border-radius: 50%;
+  background: rgba(255, 255, 255, .18);
+  font-size: 24px; line-height: 1; color: #fff; cursor: pointer; transition: transform .1s, background .15s;
   flex: 0 0 auto;
 }
-.day-nav__btn:active { transform: scale(.9); background: color-mix(in srgb, var(--accent) 25%, var(--card)); }
+.day-nav__btn:active { transform: scale(.9); background: rgba(255, 255, 255, .32); }
 .day-nav__label {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
   min-width: 128px; flex: 1 1 auto;
   touch-action: pan-y;      /* let vertical scroll pass, capture horizontal drags */
   cursor: grab; will-change: transform;
 }
-.day-nav__weekday { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 7px; color: var(--accent); }
+.day-nav__weekday { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 7px; color: #fff; }
 .day-nav__label input {
   padding: 6px 12px; border: none; border-radius: 9px; font-size: 14px; font-weight: 700; text-align: center;
   background: var(--ok-bg);

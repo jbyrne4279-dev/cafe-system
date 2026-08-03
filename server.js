@@ -40,15 +40,20 @@ function persist() {
   return writeChain;
 }
 
-/* ---- one-time demo seed ----
- * On first boot, fill in any day-records from seed-data.json that aren't
- * already present, so the app shows a realistic history. A marker file in the
- * data volume ensures this runs only once and never overwrites real entries. */
+/* ---- demo seed ----
+ * Fills in day-records from seed-data.json that aren't already present, so the
+ * app shows a realistic history. It ONLY adds days that don't exist — it never
+ * overwrites a real entry. A version marker in the data volume means a bumped
+ * seed re-imports its new days once, without touching anything already stored. */
+const SEED_VERSION = '2';
 function seedOnce() {
   const marker = path.join(DATA_DIR, '.seeded');
   const seedFile = path.join(ROOT, 'seed-data.json');
   try {
-    if (fs.existsSync(marker) || !fs.existsSync(seedFile)) return;
+    if (!fs.existsSync(seedFile)) return;
+    let prev = '';
+    try { prev = fs.readFileSync(marker, 'utf8'); } catch { /* not seeded yet */ }
+    if (prev.startsWith('v' + SEED_VERSION + ' ')) return;   // already at this version
     const seed = JSON.parse(fs.readFileSync(seedFile, 'utf8'));
     let added = 0;
     for (const loc of Object.keys(seed)) {
@@ -58,9 +63,9 @@ function seedOnce() {
       }
     }
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(marker, new Date().toISOString());
+    fs.writeFileSync(marker, 'v' + SEED_VERSION + ' ' + new Date().toISOString());
     if (added) persist();
-    console.log(`Demo seed: added ${added} day-records.`);
+    console.log(`Demo seed v${SEED_VERSION}: added ${added} day-records.`);
   } catch (e) { console.error('seed error:', e.message); }
 }
 seedOnce();

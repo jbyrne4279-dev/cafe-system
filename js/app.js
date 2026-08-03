@@ -877,17 +877,66 @@ function initDiary() {
   }
 }
 
+// Count temperature readings and cleaning tasks not yet recorded for a day.
+function dayGaps(d) {
+  let temps = 0;
+  units().forEach((u) => {
+    const r = d.temps[u.id] || {};
+    if (r.am === '' || r.am == null) temps++;
+    if (r.pm === '' || r.pm == null) temps++;
+  });
+  let cleaning = 0;
+  TASKS.forEach((t) => { if (!(d.cleaning[t.id] && d.cleaning[t.id].done)) cleaning++; });
+  return { temps, cleaning };
+}
+
+// Lightweight confirm modal (self-contained, no external libs).
+function showModal({ title, bodyHtml, confirmLabel, cancelLabel, onConfirm }) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal" role="alertdialog" aria-modal="true">
+    <h3 class="modal__title">${title}</h3>
+    <div class="modal__body">${bodyHtml}</div>
+    <div class="modal__actions">
+      <button type="button" class="btn btn--ghost modal__cancel">${esc(cancelLabel || 'Go back')}</button>
+      <button type="button" class="btn btn--save modal__confirm">${esc(confirmLabel || 'Save anyway')}</button>
+    </div>
+  </div>`;
+  const close = () => overlay.remove();
+  overlay.querySelector('.modal__cancel').addEventListener('click', close);
+  overlay.querySelector('.modal__confirm').addEventListener('click', () => { close(); onConfirm && onConfirm(); });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.body.appendChild(overlay);
+}
+
 function initFooter() {
   document.getElementById('saveBtn').addEventListener('click', () => {
-    const d = day();                       // make sure the current day is in the store
-    commit(d);                             // persist locally + tab dots + queue sync
-    pushDay(currentLocation, currentDate); // push to the cloud right away
-    flushPending();                        // and anything saved earlier while offline
-    const btn = document.getElementById('saveBtn');
-    btn.classList.add('is-saved');
-    btn.textContent = '✓ Saved';
-    clearTimeout(btn._t);
-    btn._t = setTimeout(() => { btn.classList.remove('is-saved'); btn.textContent = '✓ Save'; }, 1600);
+    const d = day();
+    const doSave = () => {
+      commit(d);                             // persist locally + tab dots + queue sync
+      pushDay(currentLocation, currentDate); // push to the cloud right away
+      flushPending();                        // and anything saved earlier while offline
+      const btn = document.getElementById('saveBtn');
+      btn.classList.add('is-saved');
+      btn.textContent = '✓ Saved';
+      clearTimeout(btn._t);
+      btn._t = setTimeout(() => { btn.classList.remove('is-saved'); btn.textContent = '✓ Save'; }, 1600);
+    };
+    const g = dayGaps(d);
+    if (g.temps || g.cleaning) {
+      const lines = [];
+      if (g.temps) lines.push(`<li><b>${g.temps}</b> temperature reading${g.temps === 1 ? '' : 's'} not entered</li>`);
+      if (g.cleaning) lines.push(`<li><b>${g.cleaning}</b> cleaning task${g.cleaning === 1 ? '' : 's'} not ticked</li>`);
+      showModal({
+        title: 'Some checks are missing',
+        bodyHtml: `<p>For ${esc(weekday(currentDate))} you still have:</p><ul class="modal__gaps">${lines.join('')}</ul><p>Save this day anyway?</p>`,
+        confirmLabel: 'Save anyway',
+        cancelLabel: 'Review checks',
+        onConfirm: doSave,
+      });
+    } else {
+      doSave();
+    }
   });
   document.getElementById('printBtn').addEventListener('click', () => {
     document.getElementById('printHeader').innerHTML =

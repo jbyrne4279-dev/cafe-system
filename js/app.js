@@ -125,6 +125,7 @@ function removeActivity(d, kind, label) {
 let currentLocation = localStorage.getItem(LOC_KEY) || LOCATIONS[0].id;
 if (!LOCATIONS.some((l) => l.id === currentLocation)) currentLocation = LOCATIONS[0].id;
 let currentDate = todayISO();
+let statsMonth = currentDate.slice(0, 7);   // month shown in the diary stats
 
 function day() { return getDay(currentDate); }
 function commit(d) {
@@ -418,15 +419,18 @@ function tile(v, l, cls) {
 function renderStats() {
   const el = document.getElementById('monthStats');
   if (!el) return;
-  const ym = currentDate.slice(0, 7);
-  const monthName = new Date(currentDate + 'T00:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  const ym = statsMonth;
+  const monthName = new Date(ym + '-01T00:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   const s = monthMetrics(currentLocation, ym);
   const series = monthDaySeries(currentLocation, ym);
 
-  const head = `<h3 class="stats__title">Monthly overview</h3>
+  const head = `<div class="stats__headrow">
+      <h3 class="stats__title">Monthly overview</h3>
+      <input type="month" class="stats__month" id="statsMonth" value="${ym}" max="${todayISO().slice(0, 7)}" aria-label="Choose month" />
+    </div>
     <p class="stats__sub">${esc(monthName)} · ${esc(locName(currentLocation))} · ${s.openDays} day${s.openDays === 1 ? '' : 's'} recorded</p>`;
 
-  if (!s.openDays) { el.innerHTML = head + '<p class="empty">No records yet this month.</p>'; return; }
+  if (!s.openDays) { el.innerHTML = head + '<p class="empty">No records for this month.</p>'; return; }
 
   el.innerHTML = head + `
     <div class="donut-row">
@@ -520,6 +524,7 @@ function attentionHtml(series) {
 
 function goToDay(iso, tab) {
   currentDate = iso;
+  statsMonth = iso.slice(0, 7);
   const input = document.getElementById('recordDate');
   if (input) input.value = iso;
   renderAll();
@@ -682,13 +687,14 @@ function flashActivePanel(dir) {
 
 function changeDay(delta) {
   currentDate = addDays(currentDate, delta);
+  statsMonth = currentDate.slice(0, 7);
   renderAll();
   flashActivePanel(delta);
 }
 
 function initDayNav() {
   const input = document.getElementById('recordDate');
-  input.addEventListener('change', () => { currentDate = input.value || todayISO(); renderAll(); });
+  input.addEventListener('change', () => { currentDate = input.value || todayISO(); statsMonth = currentDate.slice(0, 7); renderAll(); });
   document.getElementById('prevDay').addEventListener('click', () => changeDay(-1));
   document.getElementById('nextDay').addEventListener('click', () => changeDay(1));
 
@@ -837,11 +843,19 @@ function initDiary() {
 
   // Quick-links from the monthly dashboard (calendar cells + "Fix" buttons).
   const stats = document.getElementById('monthStats');
-  if (stats) stats.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-role="goto-day"]');
-    if (!btn) return;
-    goToDay(btn.dataset.date, btn.dataset.tab);
-  });
+  if (stats) {
+    stats.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-role="goto-day"]');
+      if (!btn) return;
+      goToDay(btn.dataset.date, btn.dataset.tab);
+    });
+    // Month picker: load the stats for the chosen month.
+    stats.addEventListener('change', (e) => {
+      if (e.target.id !== 'statsMonth') return;
+      statsMonth = e.target.value || todayISO().slice(0, 7);
+      renderStats();
+    });
+  }
 }
 
 function initFooter() {

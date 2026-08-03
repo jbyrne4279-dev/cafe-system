@@ -261,7 +261,12 @@ input, select, textarea { font-size: 16px; }
 
 /* ---------- Monthly stats dashboard ---------- */
 .stats { margin-top: 20px; padding-top: 18px; border-top: 0.5px solid var(--line); }
-.stats__title { font-size: 18px; font-weight: 700; margin: 0 0 3px; letter-spacing: -0.02em; }
+.stats__headrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 3px; }
+.stats__title { font-size: 18px; font-weight: 700; margin: 0; letter-spacing: -0.02em; }
+.stats__month {
+  padding: 7px 10px; border: 0.5px solid var(--line); background: var(--card);
+  border-radius: 9px; font-size: 14px; font-weight: 600; color: var(--accent); flex: none;
+}
 .stats__sub { font-size: 13px; color: var(--muted); margin: 0 0 16px; }
 .stats__legend { font-size: 12px; color: var(--muted); margin: 12px 2px 0; }
 

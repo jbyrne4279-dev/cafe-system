@@ -157,6 +157,8 @@ function removePending(key) { setPending(getPending().filter((k) => k !== key));
 const pushTimers = {};
 function queuePush(loc, date) {
   const key = loc + '|' + date;
+  addPending(key);   // mark unsynced immediately so an edit is never lost, even
+                     // if the app is closed before the debounced push fires
   clearTimeout(pushTimers[key]);
   pushTimers[key] = setTimeout(() => pushDay(loc, date), 600);
 }
@@ -184,7 +186,14 @@ async function syncLocationFromServer(loc) {
     const res = await fetch(`/api/data/${loc}`);
     if (!res.ok) throw new Error('bad status');
     const server = await res.json();
-    STORE[loc] = { ...(STORE[loc] || {}), ...server }; // server wins for existing days
+    // Server wins for existing days, EXCEPT days with unsynced local edits —
+    // those keep the local copy so a not-yet-saved entry is never clobbered.
+    const pend = new Set(getPending());
+    const merged = { ...(STORE[loc] || {}) };
+    for (const [date, rec] of Object.entries(server)) {
+      if (!pend.has(loc + '|' + date)) merged[date] = rec;
+    }
+    STORE[loc] = merged;
     saveLocal();
     if (loc === currentLocation) renderAll();
     setSync('ok');
@@ -986,4 +995,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Pull shared data from the server, then push anything saved while offline.
   syncLocationFromServer(currentLocation).then(flushPending);
   window.addEventListener('online', flushPending);
+  // Flush unsynced edits when the app is backgrounded or closed, so nothing is
+  // lost even if the user never taps Save.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPending(); });
+  window.addEventListener('pagehide', flushPending);
 });

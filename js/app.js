@@ -66,6 +66,10 @@ const TASKS = [
 const HOT_RULES = { cooking: (t) => t >= 75, reheating: (t) => t >= 75, 'hot-holding': (t) => t >= 63 };
 const STAGE_LABEL = { cooking: 'Cooking', reheating: 'Reheating', 'hot-holding': 'Hot holding' };
 
+// Fixed staff list so signed names stay consistent (no free-typing / spelling
+// variants). Picked from a dropdown in the diary.
+const EMPLOYEES = ['Joe', 'Justin', 'Luca', 'Alfie', 'Kat', 'Tam', 'Frances', 'Manuela'];
+
 /* ---------- helpers ---------- */
 
 function toISO(d) { return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
@@ -288,6 +292,18 @@ function renderHotfood() {
   }).join('');
 }
 
+// Locked staff dropdown for the diary signature. Keeps a legacy/unknown name
+// selectable so historical records still display who signed.
+function nameSelectHtml(current) {
+  const known = EMPLOYEES.includes(current);
+  const legacy = current && !known ? `<option value="${esc(current)}" selected>${esc(current)}</option>` : '';
+  const opts = EMPLOYEES.map((n) => `<option value="${esc(n)}" ${n === current ? 'selected' : ''}>${esc(n)}</option>`).join('');
+  return `<select class="diary-name" data-role="diary" data-field="name" aria-label="Who is signing">
+      <option value="" ${current ? '' : 'selected'} disabled hidden>Select your name…</option>
+      ${legacy}${opts}
+    </select>`;
+}
+
 function renderDiary() {
   const e = day().diary;
   document.getElementById('diaryCard').innerHTML = `<div class="diary-card">
@@ -298,7 +314,7 @@ function renderDiary() {
       <label><input type="checkbox" data-role="diary" data-field="opening" ${e.opening ? 'checked' : ''}/> Opening checks</label>
       <label><input type="checkbox" data-role="diary" data-field="closing" ${e.closing ? 'checked' : ''}/> Closing checks</label>
     </div>
-    <div class="diary-sign"><input data-role="diary" data-field="name" placeholder="Name" value="${esc(e.name)}" /></div>
+    <div class="diary-sign">${nameSelectHtml(e.name)}</div>
     <p class="diary-foot">Our safe methods were followed and effectively supervised today.</p>
   </div>`;
 }
@@ -839,7 +855,10 @@ function initDiary() {
     renderStats();
   };
   card.addEventListener('input', (e) => { if (e.target.dataset.role === 'diary') write(e.target); });
-  card.addEventListener('change', (e) => { if (e.target.dataset.role === 'diary' && e.target.type === 'checkbox') write(e.target); });
+  card.addEventListener('change', (e) => {
+    if (e.target.dataset.role !== 'diary') return;
+    if (e.target.type === 'checkbox' || e.target.tagName === 'SELECT') write(e.target);
+  });
 
   // Quick-links from the monthly dashboard (calendar cells + "Fix" buttons).
   const stats = document.getElementById('monthStats');

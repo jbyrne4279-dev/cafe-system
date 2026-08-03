@@ -256,6 +256,14 @@ input, select, textarea { font-size: 16px; }
 .diary-checks input { width: 24px; height: 24px; accent-color: var(--accent); }
 .diary-sign input { width: 100%; padding: 12px; border: none; background: var(--fill); border-radius: var(--radius-sm); font-size: 16px; color: var(--ink); }
 .diary-sign input:focus { outline: 2px solid var(--accent); }
+.diary-name {
+  width: 100%; padding: 12px 40px 12px 12px; border: none; background: var(--fill);
+  border-radius: var(--radius-sm); font-size: 16px; color: var(--ink);
+  -webkit-appearance: none; appearance: none; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%237c3aed' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 14px center;
+}
+.diary-name:focus { outline: 2px solid var(--accent); }
 .diary-foot { font-size: 11px; color: var(--muted); margin: 10px 0 0; }
 
 /* ---------- Monthly stats dashboard ---------- */

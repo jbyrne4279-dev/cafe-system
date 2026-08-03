@@ -324,21 +324,39 @@ function fmtTime(ts) { return new Date(ts).toLocaleTimeString('en-GB', { hour: '
 function renderCheckTimes() {
   const host = document.getElementById('checkTimes');
   if (!host) return;
-  const log = (day().activity || []).slice().sort((a, b) => a.ts - b.ts);
-  if (!log.length) {
+  const acts = day().activity || [];
+  // Summarise into groups (fridges AM/PM, cleaning, hot food) rather than
+  // listing every individual unit/task; show the time (or span) each was done.
+  const rows = [];
+  const addGroup = (label, list) => {
+    if (!list.length) return;
+    const times = list.map((a) => a.ts).sort((a, b) => a - b);
+    const first = times[0], last = times[times.length - 1];
+    rows.push({ label, ts: first, time: fmtTime(first) + (last !== first ? '–' + fmtTime(last) : '') });
+  };
+  const temps = acts.filter((a) => a.kind === 'temp');
+  addGroup('Fridge &amp; freezer — AM', temps.filter((a) => / AM$/.test(a.label)));
+  addGroup('Fridge &amp; freezer — PM', temps.filter((a) => / PM$/.test(a.label)));
+  addGroup('Cleaning', acts.filter((a) => a.kind === 'clean'));
+  addGroup('Hot food', acts.filter((a) => a.kind === 'hotfood'));
+  // Diary events (opening/closing/signed) are already summary-level.
+  acts.filter((a) => a.kind === 'diary').forEach((a) => rows.push({ label: esc(a.label), ts: a.ts, time: fmtTime(a.ts) }));
+  rows.sort((a, b) => a.ts - b.ts);
+
+  if (!rows.length) {
     host.innerHTML = `<div class="diary-card log-card">
       <h3>Check times</h3>
       <p class="empty">Times appear here as staff fill things in.</p>
     </div>`;
     return;
   }
-  const rows = log.map((a) => `<div class="log-row">
-      <span class="log-row__what">${esc(a.label)}</span>
-      <span class="log-row__time">${esc(fmtTime(a.ts))}</span>
+  const html = rows.map((r) => `<div class="log-row">
+      <span class="log-row__what">${r.label}</span>
+      <span class="log-row__time">${r.time}</span>
     </div>`).join('');
   host.innerHTML = `<div class="diary-card log-card">
     <h3>Check times</h3>
-    ${rows}
+    ${html}
   </div>`;
 }
 

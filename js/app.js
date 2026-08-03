@@ -12,9 +12,9 @@ const LOC_KEY = 'nhmc-cafe-location';
 const PENDING_KEY = 'nhmc-cafe-pending';    // ["location|date", ...]
 
 const LOCATIONS = [
-  { id: 'museum', name: 'North Herts Museum Café', icon: '☕' },
-  { id: 'howard-park', name: 'Howard Park', icon: '🌳' },
-  { id: 'bancroft', name: 'Bancroft', icon: '🌳', tint: 'orange' },
+  { id: 'museum', name: 'North Herts Museum Café', short: 'Café', icon: '☕' },
+  { id: 'howard-park', name: 'Howard Park', short: 'Howard', icon: '🌳' },
+  { id: 'bancroft', name: 'Bancroft', short: 'Bancroft', icon: '🌳', tint: 'orange' },
 ];
 
 // Fridge/freezer units differ per café. Each location lists its own; anything
@@ -76,13 +76,6 @@ function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 function longDate(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
 function weekday(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long' }); }
 function locName(id) { return (LOCATIONS.find((l) => l.id === id) || {}).name || id; }
-function locIcon(id) { return (LOCATIONS.find((l) => l.id === id) || {}).icon || '☕'; }
-function locTint(id) { return (LOCATIONS.find((l) => l.id === id) || {}).tint || ''; }
-function paintLogo() {
-  const el = document.getElementById('locLogo');
-  el.textContent = locIcon(currentLocation);
-  el.className = 'loc-btn__logo' + (locTint(currentLocation) ? ' loc-btn__logo--' + locTint(currentLocation) : '');
-}
 
 /* ---------- storage ---------- */
 
@@ -209,10 +202,16 @@ function typeTarget(type) { return type === 'freezer' ? '≤ -18°C' : '0–5°C
 /* ---------- renderers ---------- */
 
 function renderLocations() {
-  const sel = document.getElementById('locationSelect');
-  sel.innerHTML = LOCATIONS.map((l) => `<option value="${l.id}" ${l.id === currentLocation ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
-  document.getElementById('locCurrent').textContent = locName(currentLocation);
-  paintLogo();
+  const seg = document.getElementById('locSeg');
+  if (!seg) return;
+  seg.innerHTML = LOCATIONS.map((l) => {
+    const active = l.id === currentLocation;
+    const tint = l.tint ? ' loc-seg__icon--' + l.tint : '';
+    return `<button type="button" class="loc-seg__btn ${active ? 'is-active' : ''}" data-loc="${l.id}" role="tab" aria-selected="${active}">
+      <span class="loc-seg__icon${tint}">${l.icon || '☕'}</span>
+      <span class="loc-seg__label">${esc(l.short || l.name)}</span>
+    </button>`;
+  }).join('');
 }
 
 function renderDayLabel() {
@@ -638,12 +637,12 @@ function downloadMonthlyReport() {
 /* ---------- events ---------- */
 
 function initLocation() {
-  const sel = document.getElementById('locationSelect');
-  sel.addEventListener('change', () => {
-    currentLocation = sel.value;
+  document.getElementById('locSeg').addEventListener('click', (e) => {
+    const btn = e.target.closest('.loc-seg__btn');
+    if (!btn || btn.dataset.loc === currentLocation) return;
+    currentLocation = btn.dataset.loc;
     localStorage.setItem(LOC_KEY, currentLocation);
-    document.getElementById('locCurrent').textContent = locName(currentLocation);
-    paintLogo();
+    renderLocations();   // refresh the active segment
     renderAll();
     syncLocationFromServer(currentLocation);
   });

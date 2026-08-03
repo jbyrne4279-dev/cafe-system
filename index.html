@@ -14,19 +14,12 @@
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
-  <link rel="stylesheet" href="css/styles.css?v=15" />
+  <link rel="stylesheet" href="css/styles.css?v=16" />
 </head>
 <body>
   <header class="app-header">
     <div class="app-header__inner">
-      <div class="loc-picker">
-        <button type="button" class="loc-btn" id="locBtn">
-          <span class="loc-btn__logo" id="locLogo">☕</span>
-          <span class="loc-btn__name" id="locCurrent"></span>
-          <span class="loc-btn__chevron">▾</span>
-        </button>
-        <select class="loc-select" id="locationSelect" aria-label="Change café location"></select>
-      </div>
+      <div class="loc-seg" id="locSeg" role="tablist" aria-label="Café location"></div>
       <hr class="header-rule" />
       <div class="day-nav">
         <button class="day-nav__btn" id="prevDay" aria-label="Previous day">‹</button>
@@ -113,6 +106,6 @@
     <button class="tab" data-tab="diary"><span class="tab__icon">📔</span><span class="tab__label">Diary</span></button>
   </nav>
 
-  <script src="js/app.js?v=15"></script>
+  <script src="js/app.js?v=16"></script>
 </body>
 </html>

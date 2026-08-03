@@ -83,30 +83,27 @@ input, select, textarea { font-size: 16px; }
   display: flex; flex-direction: column; align-items: center; gap: 6px;
 }
 
-/* Compact location picker, pinned to the top-right of the header. It's a clear
-   pill button with a chevron; the native <select> sits invisibly on top so a
-   tap opens the OS location list. */
-.loc-picker { position: relative; align-self: flex-start; }
-.loc-btn {
-  display: inline-flex; align-items: center; gap: 9px;
-  padding: 9px 11px 9px 14px; border: none; border-radius: 999px;
+/* Location picker — a macOS-style segmented bar showing all three cafés at
+   once; the current one is highlighted. */
+.loc-seg {
+  display: flex; width: 100%; max-width: 360px; align-self: center;
+  background: var(--fill); border-radius: 12px; padding: 3px; gap: 3px;
+}
+.loc-seg__btn {
+  flex: 1 1 0; min-width: 0;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: none; background: transparent; color: var(--muted);
+  padding: 8px 6px; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.loc-seg__btn.is-active {
   background: var(--accent); color: #fff;
-  font-size: 14px; font-weight: 700; letter-spacing: -0.01em;
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 45%, transparent); cursor: pointer;
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--accent) 40%, transparent);
 }
-.loc-btn:active { background: var(--accent-press); }
-.loc-btn__logo { font-size: 15px; line-height: 1; }
+.loc-seg__icon { font-size: 15px; line-height: 1; }
 /* Tint the (green) tree emoji orange for Bancroft. */
-.loc-btn__logo--orange { filter: hue-rotate(-70deg) saturate(1.7) brightness(1.05); }
-.loc-btn__name { max-width: 52vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.loc-btn__chevron {
-  font-size: 10px; line-height: 1; color: #fff; background: rgba(255, 255, 255, .28);
-  width: 17px; height: 17px; border-radius: 50%; display: grid; place-items: center;
-}
-.loc-select {
-  position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0;
-  border: none; -webkit-appearance: none; appearance: none; font-size: 16px; cursor: pointer;
-}
+.loc-seg__icon--orange { filter: hue-rotate(-70deg) saturate(1.7) brightness(1.05); }
+.loc-seg__label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Divider between the location pill and the date */
 .header-rule { width: 100%; height: 0; border: none; border-top: 0.5px solid var(--line); margin: 4px 0 2px; }

@@ -132,16 +132,15 @@ input, select, textarea { font-size: 16px; }
 }
 .day-nav__weekday { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 7px; color: #fff; }
 .day-nav__label input {
-  padding: 6px 12px; border: none; border-radius: 9px; font-size: 14px; font-weight: 700; text-align: center;
-  background: var(--ok-bg);
-  color: var(--ok);
+  padding: 7px 12px; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; text-align: center;
+  background: #fff; color: var(--accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .12);
 }
 .today-badge {
-  font-size: 10px; font-weight: 800; letter-spacing: .06em; color: var(--today-ink);
-  background: var(--today); padding: 2px 7px; border-radius: 999px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--today) 35%, transparent);
+  font-size: 10px; font-weight: 800; letter-spacing: .06em; color: var(--accent);
+  background: #fff; padding: 2px 7px; border-radius: 999px;
 }
-.day-nav.is-today .day-nav__label input { box-shadow: 0 0 0 2px var(--today); }
+.day-nav.is-today .day-nav__label input { box-shadow: 0 0 0 2px rgba(255, 255, 255, .55), 0 1px 4px rgba(0, 0, 0, .12); }
 
 /* ---------- Main ---------- */
 .app-main {

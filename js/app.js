@@ -449,9 +449,15 @@ function monthDaySeries(loc, ym) {
   return days;
 }
 
+// Colour a completion percentage: green when high, amber mid, red low.
+function pctColor(p) {
+  if (p >= 90) return 'var(--ok)';
+  if (p >= 60) return 'var(--watch)';
+  return 'var(--bad)';
+}
 function donutCard(center, pct, color, label) {
   return `<figure class="donut-card">
-    <div class="donut" style="--p:${pct};--c:${color}"><div class="donut__hole"><span class="donut__val">${esc(center)}</span></div></div>
+    <div class="donut" style="--p:${pct};--c:${color}"><div class="donut__hole"><span class="donut__val" style="color:${color}">${esc(center)}</span></div></div>
     <figcaption>${esc(label)}</figcaption>
   </figure>`;
 }
@@ -477,9 +483,9 @@ function renderStats() {
 
   el.innerHTML = head + `
     <div class="donut-row">
-      ${donutCard(s.tempPct + '%', s.tempPct, 'var(--accent)', 'Temp checks done')}
-      ${donutCard(s.cleanPct + '%', s.cleanPct, 'var(--accent)', 'Cleaning done')}
-      ${donutCard(s.diaryPct + '%', s.diaryPct, 'var(--accent)', 'Diary signed')}
+      ${donutCard(s.tempPct + '%', s.tempPct, pctColor(s.tempPct), 'Temp checks done')}
+      ${donutCard(s.cleanPct + '%', s.cleanPct, pctColor(s.cleanPct), 'Cleaning done')}
+      ${donutCard(s.diaryPct + '%', s.diaryPct, pctColor(s.diaryPct), 'Diary signed')}
       ${donutCard(String(s.flaggedDays), s.flaggedPct, 'var(--bad)', 'Days flagged')}
     </div>
     <div class="tile-row">
@@ -488,7 +494,7 @@ function renderStats() {
       ${tile(s.alertReadings, 'Out-of-range', s.alertReadings ? 'tile--alert' : '')}
       ${tile(s.hotChecks, 'Hot food checks')}
     </div>
-    <p class="stats__legend">Purple rings show how consistently checks were completed this month. Red shows days with an out-of-range temperature.</p>
+    <p class="stats__legend">Ring colour shows how consistently checks were completed: green 90%+, amber 60–89%, red below 60%. The red ring counts days with an out-of-range temperature.</p>
     ${staffHtml(series)}
     ${calendarHtml(series)}
     ${attentionHtml(series)}`;

@@ -146,6 +146,51 @@ function sendJSON(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
+/* Apply one merge operation to a day object. Mirrors applyDayOp in js/app.js —
+ * keep the two in sync. Each phone sends only the fields it changed, so merging
+ * op-by-op lets several devices edit the same day without clobbering each other. */
+function applyDayOp(day, op) {
+  if (!op || typeof op !== 'object') return day;
+  switch (op.t) {
+    case 'set': {
+      if (!Array.isArray(op.path) || !op.path.length || op.path.length > 4) break;
+      let o = day;
+      for (let i = 0; i < op.path.length - 1; i++) {
+        const k = op.path[i];
+        if (typeof o[k] !== 'object' || o[k] == null) o[k] = {};
+        o = o[k];
+      }
+      o[op.path[op.path.length - 1]] = op.v;
+      break;
+    }
+    case 'hf-add':
+      if (op.rec && op.rec.id != null) {
+        if (!Array.isArray(day.hotfood)) day.hotfood = [];
+        if (!day.hotfood.some((x) => x.id === op.rec.id)) day.hotfood.push(op.rec);
+      }
+      break;
+    case 'hf-del':
+      day.hotfood = (day.hotfood || []).filter((x) => x.id !== op.id);
+      break;
+    case 'act':
+      if (!Array.isArray(day.activity)) day.activity = [];
+      if (op.once) { const e = day.activity.find((a) => a.kind === op.kind && a.label === op.label); if (e) { e.ts = op.ts; break; } }
+      day.activity.push({ ts: op.ts, kind: op.kind, label: op.label });
+      break;
+    case 'act-del':
+      day.activity = (day.activity || []).filter((a) => !(a.kind === op.kind && a.label === op.label));
+      break;
+  }
+  return day;
+}
+function applyDayOps(day, ops) { if (Array.isArray(ops)) ops.forEach((op) => applyDayOp(day, op)); return day; }
+
+function readBody(req, cb) {
+  let body = '';
+  req.on('data', (c) => { body += c; if (body.length > 1e6) req.destroy(); });
+  req.on('end', () => cb(body));
+}
+
 function handleApi(req, res, url) {
   // GET /api/data/:location
   const g = url.match(/^\/api\/data\/([^/]+)$/);
@@ -154,15 +199,40 @@ function handleApi(req, res, url) {
     if (!LOC_RE.test(loc)) return sendJSON(res, 400, { error: 'bad location' });
     return sendJSON(res, 200, store[loc] || {});
   }
-  // PUT /api/day/:location/:date
+  // PATCH /api/day/:location/:date  -> merge a list of field operations
+  const q = url.match(/^\/api\/day\/([^/]+)\/([^/]+)$/);
+  if (req.method === 'PATCH' && q) {
+    const loc = decodeURIComponent(q[1]);
+    const date = decodeURIComponent(q[2]);
+    if (!LOC_RE.test(loc) || !DATE_RE.test(date)) return sendJSON(res, 400, { error: 'bad location/date' });
+    readBody(req, async (body) => {
+      let parsed;
+      try { parsed = JSON.parse(body); }
+      catch { return sendJSON(res, 400, { error: 'bad json' }); }
+      const ops = parsed && parsed.ops;
+      if (!Array.isArray(ops)) return sendJSON(res, 400, { error: 'bad ops' });
+      if (!store[loc]) store[loc] = {};
+      if (!store[loc][date]) store[loc][date] = {};
+      applyDayOps(store[loc][date], ops);
+      // Only report success once the merged change is on disk; on failure return
+      // 500 so the client keeps the ops queued and retries.
+      try {
+        await persist();
+        sendJSON(res, 200, { ok: true, day: store[loc][date] });
+      } catch (e) {
+        console.error('persist error:', e.message);
+        sendJSON(res, 500, { error: 'not saved' });
+      }
+    });
+    return;
+  }
+  // PUT /api/day/:location/:date  -> whole-day upsert (kept for older clients)
   const p = url.match(/^\/api\/day\/([^/]+)\/([^/]+)$/);
   if (req.method === 'PUT' && p) {
     const loc = decodeURIComponent(p[1]);
     const date = decodeURIComponent(p[2]);
     if (!LOC_RE.test(loc) || !DATE_RE.test(date)) return sendJSON(res, 400, { error: 'bad location/date' });
-    let body = '';
-    req.on('data', (c) => { body += c; if (body.length > 1e6) req.destroy(); });
-    req.on('end', async () => {
+    readBody(req, async (body) => {
       let parsed;
       try { parsed = JSON.parse(body); }
       catch { return sendJSON(res, 400, { error: 'bad json' }); }

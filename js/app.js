@@ -10,6 +10,7 @@
 const STORE_KEY = 'nhmc-cafe-records-v5';   // { location: { date: day } }
 const LOC_KEY = 'nhmc-cafe-location';
 const PENDING_KEY = 'nhmc-cafe-pending';    // ["location|date", ...]
+const BASE_KEY = 'nhmc-cafe-base';          // last server-acknowledged copy of each day
 
 const LOCATIONS = [
   { id: 'museum', name: 'North Herts Museum Café', short: 'Café', icon: '☕' },
@@ -85,7 +86,16 @@ function locName(id) { return (LOCATIONS.find((l) => l.id === id) || {}).name ||
 
 let STORE = {};
 function loadLocal() { try { STORE = JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { STORE = {}; } }
-function saveLocal() { localStorage.setItem(STORE_KEY, JSON.stringify(STORE)); }
+function saveLocal() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(STORE)); }
+  catch (e) {
+    // Private-mode or a full quota can make this throw. The edit is still in
+    // memory and will be pushed to the server, but warn that this device can't
+    // cache it for offline use.
+    console.error('local save failed:', e && e.message);
+    setSync('local');
+  }
+}
 
 function blankDay() {
   const temps = {}; units().forEach((u) => { temps[u.id] = { am: '', pm: '' }; });
@@ -136,6 +146,7 @@ function commit(d) {
   STORE[currentLocation][currentDate] = d;
   saveLocal();
   updateTabDots();
+  bumpEdit(currentLocation, currentDate);
   queuePush(currentLocation, currentDate);
 }
 
@@ -154,6 +165,102 @@ function setPending(list) { localStorage.setItem(PENDING_KEY, JSON.stringify([..
 function addPending(key) { setPending([...getPending(), key]); }
 function removePending(key) { setPending(getPending().filter((k) => k !== key)); }
 
+/* ---- operation-based sync (multi-device safe) ----
+ * Every staff member fills the form on their own phone, so the same day is
+ * routinely edited on several devices at once. Pushing the whole day would let
+ * one phone's save wipe another phone's concurrent edit to a different field, so
+ * instead each phone pushes only what IT changed as a list of operations, and
+ * the server merges them field-by-field.
+ *
+ * BASE holds the last server-acknowledged copy of each day. The diff between
+ * BASE and the local copy is precisely this device's unsynced edits, so we can
+ * always recompute what still needs to go up (surviving reloads and offline
+ * spells) and rebase it on top of whatever other phones have sent. */
+
+let BASE = {};
+function loadBase() { try { BASE = JSON.parse(localStorage.getItem(BASE_KEY)) || {}; } catch { BASE = {}; } }
+function saveBase() { try { localStorage.setItem(BASE_KEY, JSON.stringify(BASE)); } catch { /* quota — non-fatal */ } }
+function getBase(key) { return BASE[key] || {}; }
+function setBase(key, day) { BASE[key] = day ? clone(day) : {}; saveBase(); }
+function clone(o) { return JSON.parse(JSON.stringify(o || {})); }
+
+// One-time migration from the old whole-day sync. The old model treated the
+// local cache as in sync with the server except for days flagged pending, so we
+// seed BASE from the local cache for non-pending days (they diff to nothing) and
+// leave pending days without a base so their content is pushed up as operations.
+function initBase() {
+  if (localStorage.getItem(BASE_KEY) != null) { loadBase(); return; }
+  const pend = new Set(getPending());
+  BASE = {};
+  for (const loc of Object.keys(STORE)) {
+    for (const date of Object.keys(STORE[loc] || {})) {
+      const key = loc + '|' + date;
+      if (!pend.has(key)) BASE[key] = clone(STORE[loc][date]);
+    }
+  }
+  saveBase();
+}
+
+// Per-day edit counter, used to notice edits that land while a push is in flight.
+const editVer = {};
+function bumpEdit(loc, date) { const k = loc + '|' + date; editVer[k] = (editVer[k] || 0) + 1; }
+
+// Turn (base -> current) into the minimal set of operations. A blank value that
+// was never set is not an edit, so it never overwrites another phone's reading;
+// clearing a value that WAS set is a real edit and is sent.
+function diffDay(base, cur) {
+  base = base || {}; cur = cur || {};
+  const ops = [];
+  const bt = base.temps || {}, ct = cur.temps || {};
+  for (const unit of Object.keys(ct)) {
+    for (const slot of ['am', 'pm']) {
+      const cv = (ct[unit] || {})[slot];
+      if (cv === undefined) continue;
+      const bv = (bt[unit] || {})[slot];
+      if (cv !== (bv === undefined ? '' : bv)) ops.push({ t: 'set', path: ['temps', unit, slot], v: cv });
+    }
+  }
+  if ((cur.tempsBy || '') !== (base.tempsBy || '')) ops.push({ t: 'set', path: ['tempsBy'], v: cur.tempsBy || '' });
+  const bc = base.cleaning || {}, cc = cur.cleaning || {};
+  for (const task of Object.keys(cc)) {
+    const cv = !!(cc[task] && cc[task].done), bv = !!(bc[task] && bc[task].done);
+    if (cv !== bv) ops.push({ t: 'set', path: ['cleaning', task, 'done'], v: cv });
+  }
+  const bd = base.diary || {}, cd = cur.diary || {};
+  for (const f of ['notes', 'opening', 'closing', 'name']) {
+    const def = (f === 'opening' || f === 'closing') ? false : '';
+    const cv = cd[f] !== undefined ? cd[f] : def;
+    const bv = bd[f] !== undefined ? bd[f] : def;
+    if (cv !== bv) ops.push({ t: 'set', path: ['diary', f], v: cv });
+  }
+  const bh = base.hotfood || [], ch = cur.hotfood || [];
+  const bids = new Set(bh.map((x) => x.id)), cids = new Set(ch.map((x) => x.id));
+  ch.forEach((r) => { if (!bids.has(r.id)) ops.push({ t: 'hf-add', rec: r }); });
+  bh.forEach((r) => { if (!cids.has(r.id)) ops.push({ t: 'hf-del', id: r.id }); });
+  // Activity is an informational log. once-kinds (temp/clean/diary) are keyed by
+  // kind|label; hot-food entries may repeat, so key those by kind|label|ts.
+  const actKey = (a) => (a.kind === 'hotfood' ? a.kind + '|' + a.label + '|' + a.ts : a.kind + '|' + a.label);
+  const ba = base.activity || [], ca = cur.activity || [];
+  const bmap = new Map(ba.map((a) => [actKey(a), a]));
+  const cmap = new Map(ca.map((a) => [actKey(a), a]));
+  ca.forEach((a) => { const prev = bmap.get(actKey(a)); if (!prev || prev.ts !== a.ts) ops.push({ t: 'act', kind: a.kind, label: a.label, ts: a.ts, once: a.kind !== 'hotfood' }); });
+  ba.forEach((a) => { if (a.kind !== 'hotfood' && !cmap.has(actKey(a))) ops.push({ t: 'act-del', kind: a.kind, label: a.label }); });
+  return ops;
+}
+
+// Apply a single operation to a day object (mirrors the server-side logic).
+function applyDayOp(day, op) {
+  switch (op.t) {
+    case 'set': { let o = day; const p = op.path; for (let i = 0; i < p.length - 1; i++) { if (typeof o[p[i]] !== 'object' || o[p[i]] == null) o[p[i]] = {}; o = o[p[i]]; } o[p[p.length - 1]] = op.v; break; }
+    case 'hf-add': { if (!Array.isArray(day.hotfood)) day.hotfood = []; if (!day.hotfood.some((x) => x.id === op.rec.id)) day.hotfood.push(op.rec); break; }
+    case 'hf-del': { day.hotfood = (day.hotfood || []).filter((x) => x.id !== op.id); break; }
+    case 'act': { if (!Array.isArray(day.activity)) day.activity = []; if (op.once) { const e = day.activity.find((a) => a.kind === op.kind && a.label === op.label); if (e) { e.ts = op.ts; break; } } day.activity.push({ ts: op.ts, kind: op.kind, label: op.label }); break; }
+    case 'act-del': { day.activity = (day.activity || []).filter((a) => !(a.kind === op.kind && a.label === op.label)); break; }
+  }
+  return day;
+}
+function applyDayOps(day, ops) { (ops || []).forEach((op) => applyDayOp(day, op)); return day; }
+
 const pushTimers = {};
 function queuePush(loc, date) {
   const key = loc + '|' + date;
@@ -162,19 +269,40 @@ function queuePush(loc, date) {
   clearTimeout(pushTimers[key]);
   pushTimers[key] = setTimeout(() => pushDay(loc, date), 600);
 }
+
 async function pushDay(loc, date) {
   const key = loc + '|' + date;
+  const local = (STORE[loc] || {})[date] || {};
+  const ops = diffDay(getBase(key), local);
+  if (!ops.length) { removePending(key); return; }   // nothing new to send
+  const verAtSend = editVer[key] || 0;
+  const localAtSend = clone(local);
   setSync('syncing');
   try {
     const res = await fetch(`/api/day/${loc}/${date}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify((STORE[loc] || {})[date] || {}),
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ops }),
     });
     if (!res.ok) throw new Error('bad status');
-    removePending(key);
+    const out = await res.json();
+    const merged = out.day || {};
+    setBase(key, merged);
+    // Fold in any edits made while the request was in flight so a fast typist
+    // never loses a keystroke that landed mid-sync, then adopt the server's
+    // merged copy (which now also carries other phones' concurrent changes).
+    const extraOps = diffDay(localAtSend, (STORE[loc] || {})[date] || {});
+    if (!STORE[loc]) STORE[loc] = {};
+    STORE[loc][date] = applyDayOps(clone(merged), extraOps);
+    saveLocal();
+    if ((editVer[key] || 0) !== verAtSend || extraOps.length) {
+      queuePush(loc, date);          // more arrived mid-flight — send again
+    } else {
+      removePending(key);
+    }
+    if (loc === currentLocation && date === currentDate) renderAll();
     setSync('ok');
   } catch {
-    addPending(key);
+    addPending(key);                 // keep it queued; it will retry
     setSync('local');
   }
 }
@@ -186,14 +314,16 @@ async function syncLocationFromServer(loc) {
     const res = await fetch(`/api/data/${loc}`);
     if (!res.ok) throw new Error('bad status');
     const server = await res.json();
-    // Server wins for existing days, EXCEPT days with unsynced local edits —
-    // those keep the local copy so a not-yet-saved entry is never clobbered.
-    const pend = new Set(getPending());
-    const merged = { ...(STORE[loc] || {}) };
+    if (!STORE[loc]) STORE[loc] = {};
     for (const [date, rec] of Object.entries(server)) {
-      if (!pend.has(loc + '|' + date)) merged[date] = rec;
+      const key = loc + '|' + date;
+      // This device's own unsynced edits = diff(base, local). Rebase them on top
+      // of the server's version so other phones' changes appear here without
+      // dropping anything typed on this phone that hasn't gone up yet.
+      const localOps = diffDay(getBase(key), (STORE[loc] || {})[date] || {});
+      setBase(key, rec);
+      STORE[loc][date] = applyDayOps(clone(rec), localOps);
     }
-    STORE[loc] = merged;
     saveLocal();
     if (loc === currentLocation) renderAll();
     setSync('ok');
@@ -984,6 +1114,7 @@ function initFooter() {
 
 document.addEventListener('DOMContentLoaded', () => {
   loadLocal();
+  initBase();
   renderLocations();
   initLocation();
   initTabs();

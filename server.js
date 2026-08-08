@@ -17,8 +17,19 @@ const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'records.json');
+const TMP_FILE = DATA_FILE + '.tmp';
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const BACKUP_KEEP = 14;                 // rolling daily snapshots to retain
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const LOC_RE = /^[a-z0-9-]{1,40}$/;
+
+// If DATA_DIR wasn't set, data lives in the container's ephemeral filesystem and
+// is wiped on every redeploy. Warn loudly so a missing Volume mount is obvious.
+if (!process.env.DATA_DIR) {
+  console.warn('WARNING: DATA_DIR is not set — records are stored in the ephemeral\n' +
+    '         container filesystem and WILL be lost on redeploy. Point DATA_DIR at\n' +
+    '         a mounted Railway Volume (e.g. /data) for durable storage.');
+}
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -27,17 +38,73 @@ const TYPES = {
   '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json', '.txt': 'text/plain; charset=utf-8',
 };
 
-/* ---- record store (in memory, flushed to disk, writes serialised) ---- */
+/* ---- record store (in memory, flushed to disk, writes serialised) ----
+ * Load once at boot. If the file exists but won't parse (e.g. a redeploy killed
+ * the process mid-write in a pre-atomic version), we must NOT silently start
+ * empty — the next write would overwrite the salvageable file with {}. Instead
+ * we preserve the bad file as records.json.corrupt and refuse to persist until
+ * it's dealt with, so a human can recover it. */
 let store = {};
-try { store = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { store = {}; }
+let persistLocked = false;
+(function loadStore() {
+  let raw;
+  try { raw = fs.readFileSync(DATA_FILE, 'utf8'); } catch { return; }  // no file yet — fresh start is fine
+  try {
+    store = JSON.parse(raw);
+  } catch (e) {
+    const bad = DATA_FILE + '.corrupt.' + Date.now();
+    try { fs.renameSync(DATA_FILE, bad); console.error(`records.json is corrupt; preserved as ${bad}`); }
+    catch (e2) { persistLocked = true; console.error('records.json is corrupt and could not be moved; refusing to overwrite it:', e2.message); }
+    store = {};
+  }
+})();
 
+/* Writes are serialised and atomic: JSON is written to a temp file, fsync'd,
+ * then renamed over the real file. A crash mid-write leaves the previous good
+ * file intact rather than a truncated one. */
 let writeChain = Promise.resolve();
+async function writeAtomic() {
+  await fs.promises.mkdir(DATA_DIR, { recursive: true });
+  const data = JSON.stringify(store);
+  const fh = await fs.promises.open(TMP_FILE, 'w');
+  try {
+    await fh.writeFile(data);
+    await fh.sync();               // flush to disk before the rename
+  } finally {
+    await fh.close();
+  }
+  await fs.promises.rename(TMP_FILE, DATA_FILE);
+}
 function persist() {
-  writeChain = writeChain
-    .then(() => fs.promises.mkdir(DATA_DIR, { recursive: true }))
-    .then(() => fs.promises.writeFile(DATA_FILE, JSON.stringify(store)))
-    .catch((e) => console.error('persist error:', e.message));
-  return writeChain;
+  // Chain writes so they never interleave; each caller gets a promise that
+  // resolves only once ITS state has actually reached disk (or rejects).
+  const run = writeChain.then(() => {
+    if (persistLocked) throw new Error('persist locked: unresolved corrupt data file');
+    return writeAtomic();
+  });
+  // Keep the chain alive even if this write rejects, but don't swallow the
+  // error for the caller — they need to know so the client stays "unsaved".
+  writeChain = run.catch(() => {});
+  return run;
+}
+
+/* ---- rolling daily backup ----
+ * Once per day, snapshot the current file into backups/records-YYYY-MM-DD.json
+ * and prune to the most recent BACKUP_KEEP snapshots. This gives a point-in-time
+ * copy to fall back on if the live file is ever lost or wrongly overwritten. */
+async function backupDaily() {
+  try {
+    if (!fs.existsSync(DATA_FILE)) return;
+    await fs.promises.mkdir(BACKUP_DIR, { recursive: true });
+    const stamp = new Date().toISOString().slice(0, 10);
+    const dest = path.join(BACKUP_DIR, `records-${stamp}.json`);
+    if (!fs.existsSync(dest)) await fs.promises.copyFile(DATA_FILE, dest);
+    const files = (await fs.promises.readdir(BACKUP_DIR))
+      .filter((f) => /^records-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort();
+    for (const f of files.slice(0, Math.max(0, files.length - BACKUP_KEEP))) {
+      await fs.promises.unlink(path.join(BACKUP_DIR, f)).catch(() => {});
+    }
+  } catch (e) { console.error('backup error:', e.message); }
 }
 
 /* ---- demo seed ----
@@ -64,11 +131,15 @@ function seedOnce() {
     }
     fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(marker, 'v' + SEED_VERSION + ' ' + new Date().toISOString());
-    if (added) persist();
+    if (added) persist().catch((e) => console.error('seed persist error:', e.message));
     console.log(`Demo seed v${SEED_VERSION}: added ${added} day-records.`);
   } catch (e) { console.error('seed error:', e.message); }
 }
 seedOnce();
+
+// Snapshot at boot (after any seed write has landed), then once a day.
+writeChain.then(backupDaily);
+setInterval(backupDaily, 24 * 60 * 60 * 1000).unref();
 
 function sendJSON(res, code, obj) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -91,14 +162,22 @@ function handleApi(req, res, url) {
     if (!LOC_RE.test(loc) || !DATE_RE.test(date)) return sendJSON(res, 400, { error: 'bad location/date' });
     let body = '';
     req.on('data', (c) => { body += c; if (body.length > 1e6) req.destroy(); });
-    req.on('end', () => {
+    req.on('end', async () => {
+      let parsed;
+      try { parsed = JSON.parse(body); }
+      catch { return sendJSON(res, 400, { error: 'bad json' }); }
+      if (!store[loc]) store[loc] = {};
+      store[loc][date] = parsed;
+      // Only report success once the change is actually on disk. If the write
+      // fails, return 500 so the client keeps the day queued and retries rather
+      // than clearing it as saved.
       try {
-        const parsed = JSON.parse(body);
-        if (!store[loc]) store[loc] = {};
-        store[loc][date] = parsed;
-        persist();
+        await persist();
         sendJSON(res, 200, { ok: true });
-      } catch { sendJSON(res, 400, { error: 'bad json' }); }
+      } catch (e) {
+        console.error('persist error:', e.message);
+        sendJSON(res, 500, { error: 'not saved' });
+      }
     });
     return;
   }

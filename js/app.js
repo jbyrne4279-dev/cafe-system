@@ -10,22 +10,45 @@
 const STORE_KEY = 'nhmc-cafe-records-v5';   // { location: { date: day } }
 const LOC_KEY = 'nhmc-cafe-location';
 const PENDING_KEY = 'nhmc-cafe-pending';    // ["location|date", ...]
+const BASE_KEY = 'nhmc-cafe-base';          // last server-acknowledged copy of each day
 
 const LOCATIONS = [
-  { id: 'museum', name: 'North Herts Museum Café' },
-  { id: 'howard-park', name: 'Howard Park' },
-  { id: 'bancroft', name: 'Bancroft' },
+  { id: 'museum', name: 'North Herts Museum Café', short: 'Café', icon: '☕' },
+  { id: 'howard-park', name: 'Howard Park', short: 'Howard', icon: '🌳' },
+  { id: 'bancroft', name: 'Bancroft', short: 'Bancroft', icon: '🌳', tint: 'orange' },
 ];
 
-const UNITS = [
-  { id: 'double-fridge', name: 'Double Fridge', type: 'fridge' },
-  { id: 'double-freezer', name: 'Double Freezer', type: 'freezer' },
-  { id: 'storage-freezer', name: 'Storage Freezer', type: 'freezer' },
-  { id: 'display-cabinet', name: 'Display Cabinet', type: 'fridge' },
-  { id: 'milk-fridge', name: 'Milk Fridge', type: 'fridge' },
-  { id: 'drinks-fridge', name: 'Drinks Fridge', type: 'fridge' },
-  { id: 'ice-cream-freezer', name: 'Ice cream Freezer', type: 'freezer' },
-];
+// Fridge/freezer units differ per café. Each location lists its own; anything
+// without an entry falls back to DEFAULT_UNITS.
+const UNITS_BY_LOCATION = {
+  museum: [
+    { id: 'double-fridge', name: 'Double Fridge', type: 'fridge' },
+    { id: 'double-freezer', name: 'Double Freezer', type: 'freezer' },
+    { id: 'storage-freezer', name: 'Storage Freezer', type: 'freezer' },
+    { id: 'display-cabinet', name: 'Display Cabinet', type: 'fridge' },
+    { id: 'milk-fridge', name: 'Milk Fridge', type: 'fridge' },
+    { id: 'drinks-fridge', name: 'Drinks Fridge', type: 'fridge' },
+    { id: 'ice-cream-freezer', name: 'Ice cream Freezer', type: 'freezer' },
+  ],
+  'howard-park': [
+    { id: 'gelato-freezer', name: 'Gelato Freezer', type: 'freezer' },
+    { id: 'mini-freezer', name: 'Mini Freezer', type: 'freezer' },
+    { id: 'fridge', name: 'Fridge', type: 'fridge' },
+    { id: 'drinks-fridge', name: 'Drinks Fridge', type: 'fridge' },
+    { id: 'freezer', name: 'Freezer', type: 'freezer' },
+  ],
+  bancroft: [
+    { id: 'gelato-freezer', name: 'Gelato Freezer', type: 'freezer' },
+    { id: 'ice-cream-freezer-1', name: 'Ice Cream Freezer 1', type: 'freezer' },
+    { id: 'ice-cream-freezer-2', name: 'Ice Cream Freezer 2', type: 'freezer' },
+    { id: 'drinks-fridge', name: 'Drinks Fridge', type: 'fridge' },
+    { id: 'fridge-1', name: 'Fridge 1', type: 'fridge' },
+    { id: 'fridge-2', name: 'Fridge 2', type: 'fridge' },
+  ],
+};
+const DEFAULT_UNITS = UNITS_BY_LOCATION.museum;
+function unitsFor(loc) { return UNITS_BY_LOCATION[loc] || DEFAULT_UNITS; }
+function units() { return unitsFor(currentLocation); }
 
 const TASKS = [
   { id: 'walls-doors-canopy', name: 'Walls, Doors and Canopy' },
@@ -44,6 +67,10 @@ const TASKS = [
 const HOT_RULES = { cooking: (t) => t >= 75, reheating: (t) => t >= 75, 'hot-holding': (t) => t >= 63 };
 const STAGE_LABEL = { cooking: 'Cooking', reheating: 'Reheating', 'hot-holding': 'Hot holding' };
 
+// Fixed staff list so signed names stay consistent (no free-typing / spelling
+// variants). Picked from a dropdown in the diary.
+const EMPLOYEES = ['Joe', 'Justin', 'Luca', 'Alfie', 'Kat', 'Tam', 'Frances', 'Manuela'];
+
 /* ---------- helpers ---------- */
 
 function toISO(d) { return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
@@ -59,12 +86,21 @@ function locName(id) { return (LOCATIONS.find((l) => l.id === id) || {}).name ||
 
 let STORE = {};
 function loadLocal() { try { STORE = JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { STORE = {}; } }
-function saveLocal() { localStorage.setItem(STORE_KEY, JSON.stringify(STORE)); }
+function saveLocal() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(STORE)); }
+  catch (e) {
+    // Private-mode or a full quota can make this throw. The edit is still in
+    // memory and will be pushed to the server, but warn that this device can't
+    // cache it for offline use.
+    console.error('local save failed:', e && e.message);
+    setSync('local');
+  }
+}
 
 function blankDay() {
-  const temps = {}; UNITS.forEach((u) => { temps[u.id] = { am: '', pm: '' }; });
+  const temps = {}; units().forEach((u) => { temps[u.id] = { am: '', pm: '' }; });
   const cleaning = {}; TASKS.forEach((t) => { cleaning[t.id] = { done: false }; });
-  return { temps, tempsBy: '', cleaning, hotfood: [], diary: { notes: '', opening: false, closing: false, name: '' } };
+  return { temps, tempsBy: '', cleaning, hotfood: [], diary: { notes: '', opening: false, closing: false, name: '' }, activity: [] };
 }
 
 function getDay(iso) {
@@ -72,12 +108,30 @@ function getDay(iso) {
   const loc = STORE[currentLocation];
   if (!loc[iso]) loc[iso] = blankDay();
   const d = loc[iso];
-  d.temps = d.temps || {}; UNITS.forEach((u) => { if (!d.temps[u.id]) d.temps[u.id] = { am: '', pm: '' }; });
+  d.temps = d.temps || {}; units().forEach((u) => { if (!d.temps[u.id]) d.temps[u.id] = { am: '', pm: '' }; });
   d.cleaning = d.cleaning || {}; TASKS.forEach((t) => { if (!d.cleaning[t.id]) d.cleaning[t.id] = { done: false }; });
   if (typeof d.tempsBy !== 'string') d.tempsBy = '';
   d.hotfood = d.hotfood || [];
   d.diary = d.diary || { notes: '', opening: false, closing: false, name: '' };
+  d.activity = d.activity || [];
   return d;
+}
+
+/* Activity log — records the time each check/entry is made so the diary can
+   show when fridges were checked morning and evening. `once` keeps a single
+   (latest) timestamp per distinct action; hot-food adds log every time. */
+function logActivity(d, kind, label, once = true) {
+  d.activity = d.activity || [];
+  const now = Date.now();
+  if (once) {
+    const existing = d.activity.find((a) => a.kind === kind && a.label === label);
+    if (existing) { existing.ts = now; return; }
+  }
+  d.activity.push({ ts: now, kind, label });
+}
+function removeActivity(d, kind, label) {
+  if (!d.activity) return;
+  d.activity = d.activity.filter((a) => !(a.kind === kind && a.label === label));
 }
 
 /* ---------- state ---------- */
@@ -85,12 +139,14 @@ function getDay(iso) {
 let currentLocation = localStorage.getItem(LOC_KEY) || LOCATIONS[0].id;
 if (!LOCATIONS.some((l) => l.id === currentLocation)) currentLocation = LOCATIONS[0].id;
 let currentDate = todayISO();
+let statsMonth = currentDate.slice(0, 7);   // month shown in the diary stats
 
 function day() { return getDay(currentDate); }
 function commit(d) {
   STORE[currentLocation][currentDate] = d;
   saveLocal();
   updateTabDots();
+  bumpEdit(currentLocation, currentDate);
   queuePush(currentLocation, currentDate);
 }
 
@@ -109,25 +165,144 @@ function setPending(list) { localStorage.setItem(PENDING_KEY, JSON.stringify([..
 function addPending(key) { setPending([...getPending(), key]); }
 function removePending(key) { setPending(getPending().filter((k) => k !== key)); }
 
+/* ---- operation-based sync (multi-device safe) ----
+ * Every staff member fills the form on their own phone, so the same day is
+ * routinely edited on several devices at once. Pushing the whole day would let
+ * one phone's save wipe another phone's concurrent edit to a different field, so
+ * instead each phone pushes only what IT changed as a list of operations, and
+ * the server merges them field-by-field.
+ *
+ * BASE holds the last server-acknowledged copy of each day. The diff between
+ * BASE and the local copy is precisely this device's unsynced edits, so we can
+ * always recompute what still needs to go up (surviving reloads and offline
+ * spells) and rebase it on top of whatever other phones have sent. */
+
+let BASE = {};
+function loadBase() { try { BASE = JSON.parse(localStorage.getItem(BASE_KEY)) || {}; } catch { BASE = {}; } }
+function saveBase() { try { localStorage.setItem(BASE_KEY, JSON.stringify(BASE)); } catch { /* quota — non-fatal */ } }
+function getBase(key) { return BASE[key] || {}; }
+function setBase(key, day) { BASE[key] = day ? clone(day) : {}; saveBase(); }
+function clone(o) { return JSON.parse(JSON.stringify(o || {})); }
+
+// One-time migration from the old whole-day sync. The old model treated the
+// local cache as in sync with the server except for days flagged pending, so we
+// seed BASE from the local cache for non-pending days (they diff to nothing) and
+// leave pending days without a base so their content is pushed up as operations.
+function initBase() {
+  if (localStorage.getItem(BASE_KEY) != null) { loadBase(); return; }
+  const pend = new Set(getPending());
+  BASE = {};
+  for (const loc of Object.keys(STORE)) {
+    for (const date of Object.keys(STORE[loc] || {})) {
+      const key = loc + '|' + date;
+      if (!pend.has(key)) BASE[key] = clone(STORE[loc][date]);
+    }
+  }
+  saveBase();
+}
+
+// Per-day edit counter, used to notice edits that land while a push is in flight.
+const editVer = {};
+function bumpEdit(loc, date) { const k = loc + '|' + date; editVer[k] = (editVer[k] || 0) + 1; }
+
+// Turn (base -> current) into the minimal set of operations. A blank value that
+// was never set is not an edit, so it never overwrites another phone's reading;
+// clearing a value that WAS set is a real edit and is sent.
+function diffDay(base, cur) {
+  base = base || {}; cur = cur || {};
+  const ops = [];
+  const bt = base.temps || {}, ct = cur.temps || {};
+  for (const unit of Object.keys(ct)) {
+    for (const slot of ['am', 'pm']) {
+      const cv = (ct[unit] || {})[slot];
+      if (cv === undefined) continue;
+      const bv = (bt[unit] || {})[slot];
+      if (cv !== (bv === undefined ? '' : bv)) ops.push({ t: 'set', path: ['temps', unit, slot], v: cv });
+    }
+  }
+  if ((cur.tempsBy || '') !== (base.tempsBy || '')) ops.push({ t: 'set', path: ['tempsBy'], v: cur.tempsBy || '' });
+  const bc = base.cleaning || {}, cc = cur.cleaning || {};
+  for (const task of Object.keys(cc)) {
+    const cv = !!(cc[task] && cc[task].done), bv = !!(bc[task] && bc[task].done);
+    if (cv !== bv) ops.push({ t: 'set', path: ['cleaning', task, 'done'], v: cv });
+  }
+  const bd = base.diary || {}, cd = cur.diary || {};
+  for (const f of ['notes', 'opening', 'closing', 'name']) {
+    const def = (f === 'opening' || f === 'closing') ? false : '';
+    const cv = cd[f] !== undefined ? cd[f] : def;
+    const bv = bd[f] !== undefined ? bd[f] : def;
+    if (cv !== bv) ops.push({ t: 'set', path: ['diary', f], v: cv });
+  }
+  const bh = base.hotfood || [], ch = cur.hotfood || [];
+  const bids = new Set(bh.map((x) => x.id)), cids = new Set(ch.map((x) => x.id));
+  ch.forEach((r) => { if (!bids.has(r.id)) ops.push({ t: 'hf-add', rec: r }); });
+  bh.forEach((r) => { if (!cids.has(r.id)) ops.push({ t: 'hf-del', id: r.id }); });
+  // Activity is an informational log. once-kinds (temp/clean/diary) are keyed by
+  // kind|label; hot-food entries may repeat, so key those by kind|label|ts.
+  const actKey = (a) => (a.kind === 'hotfood' ? a.kind + '|' + a.label + '|' + a.ts : a.kind + '|' + a.label);
+  const ba = base.activity || [], ca = cur.activity || [];
+  const bmap = new Map(ba.map((a) => [actKey(a), a]));
+  const cmap = new Map(ca.map((a) => [actKey(a), a]));
+  ca.forEach((a) => { const prev = bmap.get(actKey(a)); if (!prev || prev.ts !== a.ts) ops.push({ t: 'act', kind: a.kind, label: a.label, ts: a.ts, once: a.kind !== 'hotfood' }); });
+  ba.forEach((a) => { if (a.kind !== 'hotfood' && !cmap.has(actKey(a))) ops.push({ t: 'act-del', kind: a.kind, label: a.label }); });
+  return ops;
+}
+
+// Apply a single operation to a day object (mirrors the server-side logic).
+function applyDayOp(day, op) {
+  switch (op.t) {
+    case 'set': { let o = day; const p = op.path; for (let i = 0; i < p.length - 1; i++) { if (typeof o[p[i]] !== 'object' || o[p[i]] == null) o[p[i]] = {}; o = o[p[i]]; } o[p[p.length - 1]] = op.v; break; }
+    case 'hf-add': { if (!Array.isArray(day.hotfood)) day.hotfood = []; if (!day.hotfood.some((x) => x.id === op.rec.id)) day.hotfood.push(op.rec); break; }
+    case 'hf-del': { day.hotfood = (day.hotfood || []).filter((x) => x.id !== op.id); break; }
+    case 'act': { if (!Array.isArray(day.activity)) day.activity = []; if (op.once) { const e = day.activity.find((a) => a.kind === op.kind && a.label === op.label); if (e) { e.ts = op.ts; break; } } day.activity.push({ ts: op.ts, kind: op.kind, label: op.label }); break; }
+    case 'act-del': { day.activity = (day.activity || []).filter((a) => !(a.kind === op.kind && a.label === op.label)); break; }
+  }
+  return day;
+}
+function applyDayOps(day, ops) { (ops || []).forEach((op) => applyDayOp(day, op)); return day; }
+
 const pushTimers = {};
 function queuePush(loc, date) {
   const key = loc + '|' + date;
+  addPending(key);   // mark unsynced immediately so an edit is never lost, even
+                     // if the app is closed before the debounced push fires
   clearTimeout(pushTimers[key]);
   pushTimers[key] = setTimeout(() => pushDay(loc, date), 600);
 }
+
 async function pushDay(loc, date) {
   const key = loc + '|' + date;
+  const local = (STORE[loc] || {})[date] || {};
+  const ops = diffDay(getBase(key), local);
+  if (!ops.length) { removePending(key); return; }   // nothing new to send
+  const verAtSend = editVer[key] || 0;
+  const localAtSend = clone(local);
   setSync('syncing');
   try {
     const res = await fetch(`/api/day/${loc}/${date}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify((STORE[loc] || {})[date] || {}),
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ops }),
     });
     if (!res.ok) throw new Error('bad status');
-    removePending(key);
+    const out = await res.json();
+    const merged = out.day || {};
+    setBase(key, merged);
+    // Fold in any edits made while the request was in flight so a fast typist
+    // never loses a keystroke that landed mid-sync, then adopt the server's
+    // merged copy (which now also carries other phones' concurrent changes).
+    const extraOps = diffDay(localAtSend, (STORE[loc] || {})[date] || {});
+    if (!STORE[loc]) STORE[loc] = {};
+    STORE[loc][date] = applyDayOps(clone(merged), extraOps);
+    saveLocal();
+    if ((editVer[key] || 0) !== verAtSend || extraOps.length) {
+      queuePush(loc, date);          // more arrived mid-flight — send again
+    } else {
+      removePending(key);
+    }
+    if (loc === currentLocation && date === currentDate) renderAll();
     setSync('ok');
   } catch {
-    addPending(key);
+    addPending(key);                 // keep it queued; it will retry
     setSync('local');
   }
 }
@@ -139,7 +314,16 @@ async function syncLocationFromServer(loc) {
     const res = await fetch(`/api/data/${loc}`);
     if (!res.ok) throw new Error('bad status');
     const server = await res.json();
-    STORE[loc] = { ...(STORE[loc] || {}), ...server }; // server wins for existing days
+    if (!STORE[loc]) STORE[loc] = {};
+    for (const [date, rec] of Object.entries(server)) {
+      const key = loc + '|' + date;
+      // This device's own unsynced edits = diff(base, local). Rebase them on top
+      // of the server's version so other phones' changes appear here without
+      // dropping anything typed on this phone that hasn't gone up yet.
+      const localOps = diffDay(getBase(key), (STORE[loc] || {})[date] || {});
+      setBase(key, rec);
+      STORE[loc][date] = applyDayOps(clone(rec), localOps);
+    }
     saveLocal();
     if (loc === currentLocation) renderAll();
     setSync('ok');
@@ -162,9 +346,16 @@ function typeTarget(type) { return type === 'freezer' ? '≤ -18°C' : '0–5°C
 /* ---------- renderers ---------- */
 
 function renderLocations() {
-  const sel = document.getElementById('locationSelect');
-  sel.innerHTML = LOCATIONS.map((l) => `<option value="${l.id}" ${l.id === currentLocation ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
-  document.getElementById('locCurrent').textContent = locName(currentLocation);
+  const seg = document.getElementById('locSeg');
+  if (!seg) return;
+  seg.innerHTML = LOCATIONS.map((l) => {
+    const active = l.id === currentLocation;
+    const tint = l.tint ? ' loc-seg__icon--' + l.tint : '';
+    return `<button type="button" class="loc-seg__btn ${active ? 'is-active' : ''}" data-loc="${l.id}" role="tab" aria-selected="${active}">
+      <span class="loc-seg__icon${tint}">${l.icon || '☕'}</span>
+      <span class="loc-seg__label">${esc(l.short || l.name)}</span>
+    </button>`;
+  }).join('');
 }
 
 function renderDayLabel() {
@@ -175,9 +366,29 @@ function renderDayLabel() {
     `${esc(weekday(currentDate))}${isToday ? ' <span class="today-badge">TODAY</span>' : ''}`;
 }
 
+// Freezer readings are assumed negative (the iOS keypad has no minus key), so
+// typing "18" stores "-18". The sign button shows the current sign and can be
+// flipped to "+" for the rare above-zero fault reading; the sign is held in the
+// button's state so multi-digit entry works the same for either sign.
+function signOf(val) { return String(val).trim().startsWith('-') || val === '' ? '-' : '+'; }
+function tempSlot(u, slot, val) {
+  if (u.type === 'freezer') {
+    const sign = signOf(val);
+    return `<div class="tcard__slot">
+      <span>${slot.toUpperCase()}</span>
+      <input class="${evalTemp(u.type, val)}" data-role="temp" data-signed="1" data-unit="${u.id}" data-slot="${slot}" value="${esc(val)}" inputmode="decimal" placeholder="—" />
+      <button type="button" class="sign-btn ${sign === '+' ? 'sign-btn--plus' : ''}" data-role="sign" data-sign="${sign}" aria-label="Switch between minus and plus">${sign === '-' ? '−' : '+'}</button>
+    </div>`;
+  }
+  return `<div class="tcard__slot">
+    <span>${slot.toUpperCase()}</span>
+    <input class="${evalTemp(u.type, val)}" data-role="temp" data-unit="${u.id}" data-slot="${slot}" value="${esc(val)}" inputmode="decimal" placeholder="—" />
+  </div>`;
+}
+
 function renderTemps() {
   const d = day();
-  document.getElementById('tempList').innerHTML = UNITS.map((u) => {
+  document.getElementById('tempList').innerHTML = units().map((u) => {
     const r = d.temps[u.id];
     return `<div class="tcard">
       <div class="tcard__head">
@@ -185,12 +396,11 @@ function renderTemps() {
         <span class="unit-badge unit-badge--${u.type}">${typeLabel(u.type)} · ${typeTarget(u.type)}</span>
       </div>
       <div class="tcard__inputs">
-        <label class="tcard__slot"><span>AM</span><input class="${evalTemp(u.type, r.am)}" data-role="temp" data-unit="${u.id}" data-slot="am" value="${esc(r.am)}" inputmode="decimal" placeholder="—" /></label>
-        <label class="tcard__slot"><span>PM</span><input class="${evalTemp(u.type, r.pm)}" data-role="temp" data-unit="${u.id}" data-slot="pm" value="${esc(r.pm)}" inputmode="decimal" placeholder="—" /></label>
+        ${tempSlot(u, 'am', r.am)}
+        ${tempSlot(u, 'pm', r.pm)}
       </div>
     </div>`;
   }).join('');
-  document.getElementById('tempsBy').value = d.tempsBy || '';
 }
 
 function renderCleaning() {
@@ -221,6 +431,18 @@ function renderHotfood() {
   }).join('');
 }
 
+// Locked staff dropdown for the diary signature. Keeps a legacy/unknown name
+// selectable so historical records still display who signed.
+function nameSelectHtml(current) {
+  const known = EMPLOYEES.includes(current);
+  const legacy = current && !known ? `<option value="${esc(current)}" selected>${esc(current)}</option>` : '';
+  const opts = EMPLOYEES.map((n) => `<option value="${esc(n)}" ${n === current ? 'selected' : ''}>${esc(n)}</option>`).join('');
+  return `<select class="diary-name" data-role="diary" data-field="name" aria-label="Who is signing">
+      <option value="" ${current ? '' : 'selected'} disabled hidden>Select your name…</option>
+      ${legacy}${opts}
+    </select>`;
+}
+
 function renderDiary() {
   const e = day().diary;
   document.getElementById('diaryCard').innerHTML = `<div class="diary-card">
@@ -231,8 +453,49 @@ function renderDiary() {
       <label><input type="checkbox" data-role="diary" data-field="opening" ${e.opening ? 'checked' : ''}/> Opening checks</label>
       <label><input type="checkbox" data-role="diary" data-field="closing" ${e.closing ? 'checked' : ''}/> Closing checks</label>
     </div>
-    <div class="diary-sign"><input data-role="diary" data-field="name" placeholder="Name" value="${esc(e.name)}" /></div>
+    <div class="diary-sign">${nameSelectHtml(e.name)}</div>
     <p class="diary-foot">Our safe methods were followed and effectively supervised today.</p>
+  </div>`;
+}
+
+function fmtTime(ts) { return new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
+
+function renderCheckTimes() {
+  const host = document.getElementById('checkTimes');
+  if (!host) return;
+  const acts = day().activity || [];
+  // Summarise into groups (fridges AM/PM, cleaning, hot food) rather than
+  // listing every individual unit/task; show the time (or span) each was done.
+  const rows = [];
+  const addGroup = (label, list) => {
+    if (!list.length) return;
+    const times = list.map((a) => a.ts).sort((a, b) => a - b);
+    const first = times[0], last = times[times.length - 1];
+    rows.push({ label, ts: first, time: fmtTime(first) + (last !== first ? '–' + fmtTime(last) : '') });
+  };
+  const temps = acts.filter((a) => a.kind === 'temp');
+  addGroup('Fridge &amp; freezer — AM', temps.filter((a) => / AM$/.test(a.label)));
+  addGroup('Fridge &amp; freezer — PM', temps.filter((a) => / PM$/.test(a.label)));
+  addGroup('Cleaning', acts.filter((a) => a.kind === 'clean'));
+  addGroup('Hot food', acts.filter((a) => a.kind === 'hotfood'));
+  // Diary events (opening/closing/signed) are already summary-level.
+  acts.filter((a) => a.kind === 'diary').forEach((a) => rows.push({ label: esc(a.label), ts: a.ts, time: fmtTime(a.ts) }));
+  rows.sort((a, b) => a.ts - b.ts);
+
+  if (!rows.length) {
+    host.innerHTML = `<div class="diary-card log-card">
+      <h3>Check times</h3>
+      <p class="empty">Times appear here as staff fill things in.</p>
+    </div>`;
+    return;
+  }
+  const html = rows.map((r) => `<div class="log-row">
+      <span class="log-row__what">${r.label}</span>
+      <span class="log-row__time">${r.time}</span>
+    </div>`).join('');
+  host.innerHTML = `<div class="diary-card log-card">
+    <h3>Check times</h3>
+    ${html}
   </div>`;
 }
 
@@ -260,7 +523,7 @@ function monthMetrics(loc, ym) {
     if (!dayHasData(d)) continue;
     openDays++;
     let dayFlagged = false;
-    UNITS.forEach((u) => {
+    unitsFor(loc).forEach((u) => {
       const r = d.temps[u.id] || { am: '', pm: '' };
       ['am', 'pm'].forEach((s) => {
         expected++;
@@ -283,9 +546,48 @@ function monthMetrics(loc, ym) {
   };
 }
 
+function dayHasAlert(d, loc) {
+  if (!d) return false;
+  return unitsFor(loc).some((u) => {
+    const r = (d.temps || {})[u.id] || {};
+    return ['am', 'pm'].some((s) => r[s] !== '' && !isNaN(Number(r[s])) && evalTemp(u.type, r[s]) === 'alert');
+  });
+}
+
+// Per-day status across the viewed month, for the completion graph and the
+// "needs attention" list. Days after today are 'future'; blank past days are
+// 'missed'; days missing a whole section are 'partial'; otherwise 'complete'.
+const SECTION_LABEL = { temps: 'Temps', cleaning: 'Cleaning', diary: 'Diary' };
+function monthDaySeries(loc, ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const dim = new Date(y, m, 0).getDate();
+  const today = todayISO();
+  const days = [];
+  for (let i = 1; i <= dim; i++) {
+    const iso = `${ym}-${String(i).padStart(2, '0')}`;
+    const d = (STORE[loc] || {})[iso];
+    let status, missing = [];
+    if (iso > today) status = 'future';
+    else if (!dayHasData(d)) { status = 'missed'; missing = ['temps', 'cleaning', 'diary']; }
+    else {
+      ['temps', 'cleaning', 'diary'].forEach((k) => { if (!sectionDone(d, k)) missing.push(k); });
+      status = missing.length ? 'partial' : 'complete';
+    }
+    const who = (d && d.diary && d.diary.name || '').trim();
+    days.push({ iso, day: i, dow: new Date(iso + 'T00:00:00').getDay(), status, missing, who, flagged: status !== 'future' && dayHasAlert(d, loc), isToday: iso === today });
+  }
+  return days;
+}
+
+// Colour a completion percentage: green when high, amber mid, red low.
+function pctColor(p) {
+  if (p >= 90) return 'var(--ok)';
+  if (p >= 60) return 'var(--watch)';
+  return 'var(--bad)';
+}
 function donutCard(center, pct, color, label) {
   return `<figure class="donut-card">
-    <div class="donut" style="--p:${pct};--c:${color}"><div class="donut__hole"><span class="donut__val">${esc(center)}</span></div></div>
+    <div class="donut" style="--p:${pct};--c:${color}"><div class="donut__hole"><span class="donut__val" style="color:${color}">${esc(center)}</span></div></div>
     <figcaption>${esc(label)}</figcaption>
   </figure>`;
 }
@@ -296,20 +598,24 @@ function tile(v, l, cls) {
 function renderStats() {
   const el = document.getElementById('monthStats');
   if (!el) return;
-  const ym = currentDate.slice(0, 7);
-  const monthName = new Date(currentDate + 'T00:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  const ym = statsMonth;
+  const monthName = new Date(ym + '-01T00:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   const s = monthMetrics(currentLocation, ym);
+  const series = monthDaySeries(currentLocation, ym);
 
-  const head = `<h3 class="stats__title">Monthly overview</h3>
+  const head = `<div class="stats__headrow">
+      <h3 class="stats__title">Monthly overview</h3>
+      <input type="month" class="stats__month" id="statsMonth" value="${ym}" max="${todayISO().slice(0, 7)}" aria-label="Choose month" />
+    </div>
     <p class="stats__sub">${esc(monthName)} · ${esc(locName(currentLocation))} · ${s.openDays} day${s.openDays === 1 ? '' : 's'} recorded</p>`;
 
-  if (!s.openDays) { el.innerHTML = head + '<p class="empty">No records yet this month.</p>'; return; }
+  if (!s.openDays) { el.innerHTML = head + '<p class="empty">No records for this month.</p>'; return; }
 
   el.innerHTML = head + `
     <div class="donut-row">
-      ${donutCard(s.tempPct + '%', s.tempPct, 'var(--accent)', 'Temp checks done')}
-      ${donutCard(s.cleanPct + '%', s.cleanPct, 'var(--accent)', 'Cleaning done')}
-      ${donutCard(s.diaryPct + '%', s.diaryPct, 'var(--accent)', 'Diary signed')}
+      ${donutCard(s.tempPct + '%', s.tempPct, pctColor(s.tempPct), 'Temp checks done')}
+      ${donutCard(s.cleanPct + '%', s.cleanPct, pctColor(s.cleanPct), 'Cleaning done')}
+      ${donutCard(s.diaryPct + '%', s.diaryPct, pctColor(s.diaryPct), 'Diary signed')}
       ${donutCard(String(s.flaggedDays), s.flaggedPct, 'var(--bad)', 'Days flagged')}
     </div>
     <div class="tile-row">
@@ -318,7 +624,93 @@ function renderStats() {
       ${tile(s.alertReadings, 'Out-of-range', s.alertReadings ? 'tile--alert' : '')}
       ${tile(s.hotChecks, 'Hot food checks')}
     </div>
-    <p class="stats__legend">Purple rings show how consistently checks were completed this month. Red shows days with an out-of-range temperature.</p>`;
+    <p class="stats__legend">Ring colour shows how consistently checks were completed: green 90%+, amber 60–89%, red below 60%. The red ring counts days with an out-of-range temperature.</p>
+    ${staffHtml(series)}
+    ${calendarHtml(series)}
+    ${attentionHtml(series)}`;
+}
+
+// Short tag shown on a calendar day for who signed it (up to 4 chars).
+function whoTag(name) {
+  if (!name) return '';
+  const parts = name.trim().split(/\s+/);
+  const t = parts.length > 1 ? parts.map((p) => p[0]).join('') : name.slice(0, 4);
+  return t.toUpperCase().slice(0, 4);
+}
+
+// "Who worked" — tally of who signed the diary each day this month.
+function staffHtml(series) {
+  const tally = {};
+  series.forEach((s) => { if (s.who) tally[s.who] = (tally[s.who] || 0) + 1; });
+  const staff = Object.entries(tally).map(([name, days]) => ({ name, days })).sort((a, b) => b.days - a.days);
+  if (!staff.length) return '';
+  const chips = staff.map((s) => `<span class="staff-chip"><b>${esc(s.name)}</b>${s.days} day${s.days === 1 ? '' : 's'}</span>`).join('');
+  return `<h4 class="stats__h4">Who worked</h4>
+    <div class="staff-wrap">${chips}</div>`;
+}
+
+// Month heat-calendar: one cell per day, coloured by completion. Tap to open.
+function calendarHtml(series) {
+  const dows = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const lead = series.length ? series[0].dow : 0;
+  const heads = dows.map((d) => `<span class="cal__dow">${d}</span>`).join('');
+  const pads = Array.from({ length: lead }, () => '<span class="cal__pad"></span>').join('');
+  const cells = series.map((s) => {
+    let title = s.status === 'future' ? 'Upcoming'
+      : s.status === 'missed' ? 'No record — tap to fill in'
+      : s.status === 'partial' ? 'Missing: ' + s.missing.map((k) => SECTION_LABEL[k]).join(', ')
+      : 'All checks done';
+    if (s.who) title += ' · ' + s.who;
+    const flag = s.flagged ? ' cal__cell--flagged' : '';
+    const today = s.isToday ? ' cal__cell--today' : '';
+    const tap = s.status === 'future' ? '' : ` data-role="goto-day" data-date="${s.iso}" data-tab="${s.missing[0] || 'temps'}"`;
+    const who = s.who ? `<span class="cal__who">${esc(whoTag(s.who))}</span>` : '';
+    return `<button class="cal__cell cal__cell--${s.status}${flag}${today}"${tap} title="${esc(title)}"><span class="cal__num">${s.day}</span>${who}</button>`;
+  }).join('');
+  return `<h4 class="stats__h4">Daily completion</h4>
+    <div class="cal">${heads}${pads}${cells}</div>
+    <div class="cal-legend">
+      <span><i class="dot dot--complete"></i>Complete</span>
+      <span><i class="dot dot--partial"></i>Partial</span>
+      <span><i class="dot dot--missed"></i>Missed</span>
+      <span><i class="dot dot--flagged"></i>Temp alert</span>
+    </div>`;
+}
+
+// Notifications: past days that are missed or missing a section, with a quick
+// link that jumps straight to that day (and the first section needing input).
+function attentionHtml(series) {
+  const today = todayISO();
+  const items = series.filter((s) => s.iso < today && (s.status === 'missed' || s.status === 'partial'));
+  if (!items.length) {
+    return `<h4 class="stats__h4">Needs attention</h4>
+      <p class="allclear">✓ Nothing missed this month — every past day is complete.</p>`;
+  }
+  const rows = items.map((s) => {
+    const what = s.status === 'missed' ? 'Nothing recorded' : 'Missing ' + s.missing.map((k) => SECTION_LABEL[k]).join(', ');
+    const label = new Date(s.iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    return `<div class="attn-row">
+      <div class="attn-row__main">
+        <div class="attn-row__day">${esc(label)}</div>
+        <div class="attn-row__what">${esc(what)}</div>
+      </div>
+      <button class="btn btn--fix" data-role="goto-day" data-date="${s.iso}" data-tab="${s.missing[0] || 'temps'}">Fix</button>
+    </div>`;
+  }).join('');
+  return `<h4 class="stats__h4">Needs attention <span class="attn-count">${items.length}</span></h4>
+    <div class="attn-list">${rows}</div>`;
+}
+
+function goToDay(iso, tab) {
+  currentDate = iso;
+  statsMonth = iso.slice(0, 7);
+  const input = document.getElementById('recordDate');
+  if (input) input.value = iso;
+  renderAll();
+  const t = tab || 'temps';
+  document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('is-active', x.dataset.tab === t));
+  document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('is-active', p.id === 'panel-' + t));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function renderAll() {
@@ -327,6 +719,7 @@ function renderAll() {
   renderCleaning();
   renderHotfood();
   renderDiary();
+  renderCheckTimes();
   renderStats();
   updateTabDots();
 }
@@ -343,8 +736,8 @@ function dayHasData(d) {
   return !!(di.notes || di.name || di.opening || di.closing);
 }
 
-function reportDayBlock(iso, d) {
-  const tempRows = UNITS.map((u) => {
+function reportDayBlock(iso, d, unitList) {
+  const tempRows = unitList.map((u) => {
     const r = d.temps[u.id] || { am: '', pm: '' };
     const flag = (v) => (evalTemp(u.type, v) === 'alert' ? ' ⚠' : '');
     return `<tr><td>${esc(u.name)}</td><td>${esc(r.am)}${r.am !== '' ? '°C' : ''}${flag(r.am)}</td><td>${esc(r.pm)}${r.pm !== '' ? '°C' : ''}${flag(r.pm)}</td></tr>`;
@@ -380,7 +773,7 @@ function buildMonthlyReport(loc, ym) {
     const d = (STORE[loc] || {})[iso];
     if (!dayHasData(d)) continue;
     open++;
-    blocks += reportDayBlock(iso, d);
+    blocks += reportDayBlock(iso, d, unitsFor(loc));
   }
   if (!open) blocks = '<p class="muted">No records were found for this month.</p>';
 
@@ -428,25 +821,38 @@ function downloadMonthlyReport() {
 /* ---------- events ---------- */
 
 function initLocation() {
-  const sel = document.getElementById('locationSelect');
-  sel.addEventListener('change', () => {
-    currentLocation = sel.value;
+  document.getElementById('locSeg').addEventListener('click', (e) => {
+    const btn = e.target.closest('.loc-seg__btn');
+    if (!btn || btn.dataset.loc === currentLocation) return;
+    currentLocation = btn.dataset.loc;
     localStorage.setItem(LOC_KEY, currentLocation);
-    document.getElementById('locCurrent').textContent = locName(currentLocation);
+    renderLocations();   // refresh the active segment
     renderAll();
     syncLocationFromServer(currentLocation);
   });
 }
 
+const TAB_ORDER = ['temps', 'cleaning', 'hotfood', 'diary'];
+function activateTab(name, dir) {
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('is-active', t.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('is-active', p.id === 'panel-' + name));
+  if (name === 'diary') { renderCheckTimes(); renderStats(); }
+  if (dir) flashActivePanel(dir);
+}
+// Swipe the page content to move between tabs: left → tab on the left,
+// right → tab on the right (no wrap at the ends).
+function changeTab(dir) {
+  const active = document.querySelector('.tab.is-active');
+  const idx = TAB_ORDER.indexOf(active ? active.dataset.tab : 'temps');
+  const next = idx + dir;
+  if (next < 0 || next >= TAB_ORDER.length) return;
+  activateTab(TAB_ORDER[next], dir);
+}
 function initTabs() {
   document.getElementById('tabs').addEventListener('click', (e) => {
     const btn = e.target.closest('.tab');
     if (!btn) return;
-    document.querySelectorAll('.tab').forEach((t) => t.classList.remove('is-active'));
-    document.querySelectorAll('.panel').forEach((p) => p.classList.remove('is-active'));
-    btn.classList.add('is-active');
-    document.getElementById('panel-' + btn.dataset.tab).classList.add('is-active');
-    if (btn.dataset.tab === 'diary') renderStats();
+    activateTab(btn.dataset.tab);
   });
 }
 
@@ -460,50 +866,103 @@ function flashActivePanel(dir) {
 
 function changeDay(delta) {
   currentDate = addDays(currentDate, delta);
+  statsMonth = currentDate.slice(0, 7);
   renderAll();
   flashActivePanel(delta);
 }
 
 function initDayNav() {
   const input = document.getElementById('recordDate');
-  input.addEventListener('change', () => { currentDate = input.value || todayISO(); renderAll(); });
+  input.addEventListener('change', () => { currentDate = input.value || todayISO(); statsMonth = currentDate.slice(0, 7); renderAll(); });
   document.getElementById('prevDay').addEventListener('click', () => changeDay(-1));
   document.getElementById('nextDay').addEventListener('click', () => changeDay(1));
+
+  // Make the date itself swipeable, with the label tracking the finger so it's
+  // clear the day is moving. Swipe left → next day, swipe right → previous day.
+  const nav = document.querySelector('.day-nav');
+  const label = document.getElementById('dayLabel')?.closest('.day-nav__label') || nav;
+  initSwipe(nav, { preview: label });
 }
 
-// Swipe left → next day, swipe right → previous day.
-function initSwipe(el) {
-  let x0 = null, y0 = null, t0 = 0;
+// Horizontal swipe handler. Calls onSwipe(dir) where dir is -1 for a left
+// swipe and +1 for a right swipe. Defaults to changing the day (swipe left →
+// next day). If a `preview` element is given, it slides with the finger and
+// snaps back, giving live feedback while dragging.
+function initSwipe(el, { preview, onSwipe } = {}) {
+  const act = onSwipe || ((dir) => changeDay(dir < 0 ? 1 : -1));
+  const THRESHOLD = 60;      // px of travel needed to commit
+  const MAX_DRAG = 90;       // px the preview is allowed to travel
+  let x0 = null, y0 = null, t0 = 0, horizontal = false;
+
+  const setPreview = (dx, animate) => {
+    if (!preview) return;
+    preview.style.transition = animate ? 'transform .18s ease, opacity .18s ease' : 'none';
+    const clamped = Math.max(-MAX_DRAG, Math.min(MAX_DRAG, dx));
+    preview.style.transform = dx ? `translateX(${clamped}px)` : '';
+    preview.style.opacity = dx ? String(1 - Math.min(0.5, Math.abs(clamped) / (MAX_DRAG * 2))) : '';
+  };
+
   el.addEventListener('touchstart', (e) => {
     if (e.touches.length > 1) { x0 = null; return; }
-    const t = e.changedTouches[0]; x0 = t.clientX; y0 = t.clientY; t0 = Date.now();
+    const t = e.changedTouches[0];
+    x0 = t.clientX; y0 = t.clientY; t0 = Date.now(); horizontal = false;
   }, { passive: true });
+
+  el.addEventListener('touchmove', (e) => {
+    if (x0 == null) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - x0, dy = t.clientY - y0;
+    if (!horizontal && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) horizontal = true;
+    if (horizontal) setPreview(dx, false);
+  }, { passive: true });
+
   el.addEventListener('touchend', (e) => {
     if (x0 == null) return;
     const t = e.changedTouches[0];
     const dx = t.clientX - x0, dy = t.clientY - y0, dt = Date.now() - t0;
     x0 = null;
-    if (dt < 700 && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.8) {
-      changeDay(dx < 0 ? 1 : -1);
+    setPreview(0, true); // snap back
+    if (dt < 700 && Math.abs(dx) > THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.8) {
+      act(dx < 0 ? -1 : 1);
     }
   }, { passive: true });
+
+  el.addEventListener('touchcancel', () => { x0 = null; setPreview(0, true); }, { passive: true });
 }
 
 function initTemps() {
   document.getElementById('tempList').addEventListener('input', (e) => {
     const el = e.target;
     if (el.dataset.role !== 'temp') return;
-    const u = UNITS.find((x) => x.id === el.dataset.unit);
+    const u = units().find((x) => x.id === el.dataset.unit);
     const d = day();
-    d.temps[el.dataset.unit][el.dataset.slot] = el.value.trim();
+    let val = el.value.trim();
+    if (el.dataset.signed) {
+      // Combine the typed magnitude with the sign held by the ± button.
+      const signBtn = el.closest('.tcard__slot').querySelector('.sign-btn');
+      const sign = signBtn ? signBtn.dataset.sign : '-';
+      const mag = val.replace(/[^0-9.]/g, '');
+      val = mag === '' ? '' : (sign === '-' ? '-' : '') + mag;
+      if (el.value !== val) el.value = val;
+    }
+    d.temps[el.dataset.unit][el.dataset.slot] = val;
+    const label = `${u ? u.name : el.dataset.unit} ${el.dataset.slot.toUpperCase()}`;
+    if (val !== '') logActivity(d, 'temp', label); else removeActivity(d, 'temp', label);
     commit(d);
-    el.className = evalTemp(u ? u.type : 'fridge', el.value.trim());
+    el.className = evalTemp(u ? u.type : 'fridge', val);
   });
-  document.getElementById('tempsBy').addEventListener('input', (e) => {
-    const d = day();
-    d.tempsBy = e.target.value.toUpperCase();
-    e.target.value = d.tempsBy;
-    commit(d);
+  // Sign button: flip between − (default) and + for a freezer reading.
+  document.getElementById('tempList').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-role="sign"]');
+    if (!btn) return;
+    const sign = btn.dataset.sign === '-' ? '+' : '-';
+    btn.dataset.sign = sign;
+    btn.textContent = sign === '-' ? '−' : '+';
+    btn.classList.toggle('sign-btn--plus', sign === '+');
+    // Re-run the input handler so the stored value picks up the new sign.
+    const input = btn.closest('.tcard__slot').querySelector('input[data-role="temp"]');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.focus();
   });
 }
 
@@ -515,6 +974,8 @@ function initCleaning() {
     const d = day();
     const c = d.cleaning[row.dataset.task];
     c.done = !c.done;
+    const taskName = (TASKS.find((t) => t.id === row.dataset.task) || {}).name || row.dataset.task;
+    if (c.done) logActivity(d, 'clean', taskName); else removeActivity(d, 'clean', taskName);
     commit(d);
     row.classList.toggle('done', c.done);
     row.querySelector('.crow__box').textContent = c.done ? '✓' : '';
@@ -526,7 +987,9 @@ function initHotfood() {
     e.preventDefault();
     const f = e.target;
     const d = day();
-    d.hotfood.push({ id: uid(), item: f.item.value.trim(), stage: f.stage.value, temp: f.temp.value, by: f.by.value.trim().toUpperCase() });
+    const item = f.item.value.trim();
+    d.hotfood.push({ id: uid(), item, stage: f.stage.value, temp: f.temp.value, by: '' });
+    logActivity(d, 'hotfood', item, false);
     commit(d);
     f.reset();
     renderHotfood();
@@ -543,12 +1006,101 @@ function initHotfood() {
 
 function initDiary() {
   const card = document.getElementById('diaryCard');
-  const write = (el) => { const d = day(); d.diary[el.dataset.field] = el.type === 'checkbox' ? el.checked : el.value; commit(d); };
+  const write = (el) => {
+    const d = day();
+    const field = el.dataset.field;
+    d.diary[field] = el.type === 'checkbox' ? el.checked : el.value;
+    if (field === 'opening') { d.diary[field] ? logActivity(d, 'diary', 'Opening checks') : removeActivity(d, 'diary', 'Opening checks'); }
+    if (field === 'closing') { d.diary[field] ? logActivity(d, 'diary', 'Closing checks') : removeActivity(d, 'diary', 'Closing checks'); }
+    if (field === 'name') { d.diary[field].trim() ? logActivity(d, 'diary', 'Signed') : removeActivity(d, 'diary', 'Signed'); }
+    commit(d);
+    renderCheckTimes();
+    renderStats();
+  };
   card.addEventListener('input', (e) => { if (e.target.dataset.role === 'diary') write(e.target); });
-  card.addEventListener('change', (e) => { if (e.target.dataset.role === 'diary' && e.target.type === 'checkbox') write(e.target); });
+  card.addEventListener('change', (e) => {
+    if (e.target.dataset.role !== 'diary') return;
+    if (e.target.type === 'checkbox' || e.target.tagName === 'SELECT') write(e.target);
+  });
+
+  // Quick-links from the monthly dashboard (calendar cells + "Fix" buttons).
+  const stats = document.getElementById('monthStats');
+  if (stats) {
+    stats.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-role="goto-day"]');
+      if (!btn) return;
+      goToDay(btn.dataset.date, btn.dataset.tab);
+    });
+    // Month picker: load the stats for the chosen month.
+    stats.addEventListener('change', (e) => {
+      if (e.target.id !== 'statsMonth') return;
+      statsMonth = e.target.value || todayISO().slice(0, 7);
+      renderStats();
+    });
+  }
+}
+
+// Count temperature readings and cleaning tasks not yet recorded for a day.
+function dayGaps(d) {
+  let temps = 0;
+  units().forEach((u) => {
+    const r = d.temps[u.id] || {};
+    if (r.am === '' || r.am == null) temps++;
+    if (r.pm === '' || r.pm == null) temps++;
+  });
+  let cleaning = 0;
+  TASKS.forEach((t) => { if (!(d.cleaning[t.id] && d.cleaning[t.id].done)) cleaning++; });
+  return { temps, cleaning };
+}
+
+// Lightweight confirm modal (self-contained, no external libs).
+function showModal({ title, bodyHtml, confirmLabel, cancelLabel, onConfirm }) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal" role="alertdialog" aria-modal="true">
+    <h3 class="modal__title">${title}</h3>
+    <div class="modal__body">${bodyHtml}</div>
+    <div class="modal__actions">
+      <button type="button" class="btn btn--ghost modal__cancel">${esc(cancelLabel || 'Go back')}</button>
+      <button type="button" class="btn btn--save modal__confirm">${esc(confirmLabel || 'Save anyway')}</button>
+    </div>
+  </div>`;
+  const close = () => overlay.remove();
+  overlay.querySelector('.modal__cancel').addEventListener('click', close);
+  overlay.querySelector('.modal__confirm').addEventListener('click', () => { close(); onConfirm && onConfirm(); });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.body.appendChild(overlay);
 }
 
 function initFooter() {
+  document.getElementById('saveBtn').addEventListener('click', () => {
+    const d = day();
+    const doSave = () => {
+      commit(d);                             // persist locally + tab dots + queue sync
+      pushDay(currentLocation, currentDate); // push to the cloud right away
+      flushPending();                        // and anything saved earlier while offline
+      const btn = document.getElementById('saveBtn');
+      btn.classList.add('is-saved');
+      btn.textContent = '✓ Saved';
+      clearTimeout(btn._t);
+      btn._t = setTimeout(() => { btn.classList.remove('is-saved'); btn.textContent = '✓ Save'; }, 1600);
+    };
+    const g = dayGaps(d);
+    if (g.temps || g.cleaning) {
+      const lines = [];
+      if (g.temps) lines.push(`<li><b>${g.temps}</b> temperature reading${g.temps === 1 ? '' : 's'} not entered</li>`);
+      if (g.cleaning) lines.push(`<li><b>${g.cleaning}</b> cleaning task${g.cleaning === 1 ? '' : 's'} not ticked</li>`);
+      showModal({
+        title: 'Some checks are missing',
+        bodyHtml: `<p>For ${esc(weekday(currentDate))} you still have:</p><ul class="modal__gaps">${lines.join('')}</ul><p>Save this day anyway?</p>`,
+        confirmLabel: 'Save anyway',
+        cancelLabel: 'Review checks',
+        onConfirm: doSave,
+      });
+    } else {
+      doSave();
+    }
+  });
   document.getElementById('printBtn').addEventListener('click', () => {
     document.getElementById('printHeader').innerHTML =
       `<h1>${esc(locName(currentLocation))} — Daily Record</h1><p>${esc(longDate(currentDate))}</p>`;
@@ -562,6 +1114,7 @@ function initFooter() {
 
 document.addEventListener('DOMContentLoaded', () => {
   loadLocal();
+  initBase();
   renderLocations();
   initLocation();
   initTabs();
@@ -571,11 +1124,16 @@ document.addEventListener('DOMContentLoaded', () => {
   initHotfood();
   initDiary();
   initFooter();
-  initSwipe(document.querySelector('.app-main'));
-  initSwipe(document.querySelector('.app-header'));
+  // Swiping the date (header) changes the day; swiping the page content moves
+  // between tabs — left to the tab on the left, right to the tab on the right.
+  initSwipe(document.querySelector('.app-main'), { onSwipe: changeTab });
   renderAll();
 
   // Pull shared data from the server, then push anything saved while offline.
   syncLocationFromServer(currentLocation).then(flushPending);
   window.addEventListener('online', flushPending);
+  // Flush unsynced edits when the app is backgrounded or closed, so nothing is
+  // lost even if the user never taps Save.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPending(); });
+  window.addEventListener('pagehide', flushPending);
 });
